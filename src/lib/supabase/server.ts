@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { Database } from "@/types/database.types";
 
 /**
  * Creates a Supabase client for Server Components, Server Actions, and Route Handlers.
@@ -21,7 +22,7 @@ export async function createClient() {
     }
   }
 
-  return createServerClient(
+  return createServerClient<Database>(
     supabaseUrl || "https://placeholder-project.supabase.co",
     supabaseKey || "placeholder-publishable-key",
     {
