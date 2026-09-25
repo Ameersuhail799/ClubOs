@@ -9,34 +9,67 @@ import { cn } from "@/lib/utils";
 
 interface WorkspaceHeaderProps {
   currentScope?: string;
+  userEmail?: string;
+  userName?: string;
+  role?: string | null;
+  organizationName?: string;
+  primaryGroupName?: string;
 }
 
-export function WorkspaceHeader({ currentScope }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({
+  currentScope,
+  userEmail,
+  userName,
+  role,
+  organizationName,
+  primaryGroupName,
+}: WorkspaceHeaderProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Derive scope badge text from pathname if not explicitly provided
+  // Compute authoritative scope badge
   const scopeBadge =
     currentScope ||
-    (pathname.includes("/command-center")
-      ? "MAIN HEAD / COMMAND CENTER"
-      : pathname.includes("/group")
-      ? "GROUP HEAD / WORKSPACE"
-      : pathname.includes("/my-day")
-      ? "MEMBER / MY DAY"
-      : pathname.includes("/admin")
-      ? "ADMIN / ACCESS REGISTRY"
-      : pathname.includes("/notifications")
-      ? "SHARED / NOTIFICATIONS"
+    (role === "main_head"
+      ? `MAIN HEAD • ${organizationName?.toUpperCase() || "COMMAND CENTER"}`
+      : role === "group_head"
+      ? `GROUP HEAD • ${primaryGroupName?.toUpperCase() || "GROUP WORKSPACE"}`
+      : role === "member"
+      ? `MEMBER • ${primaryGroupName?.toUpperCase() || "MY DAY"}`
       : "WORKSPACE");
 
-  const navLinks = [
-    { href: "/workspace/command-center", label: "Command Center" },
-    { href: "/workspace/group", label: "Group" },
-    { href: "/workspace/my-day", label: "My Day" },
-    { href: "/workspace/notifications", label: "Notifications" },
-    { href: "/workspace/admin/members", label: "Members" },
+  // Filter links according to authoritative role
+  const allNavLinks = [
+    {
+      href: "/workspace/command-center",
+      label: "Command Center",
+      roles: ["main_head"],
+    },
+    {
+      href: "/workspace/group",
+      label: "Group",
+      roles: ["main_head", "group_head"],
+    },
+    {
+      href: "/workspace/my-day",
+      label: "My Day",
+      roles: ["main_head", "group_head", "member"],
+    },
+    {
+      href: "/workspace/notifications",
+      label: "Notifications",
+      roles: ["main_head", "group_head", "member"],
+    },
+    {
+      href: "/workspace/admin/members",
+      label: "Members",
+      roles: ["main_head"],
+    },
   ];
+
+  const visibleNavLinks = allNavLinks.filter(
+    (link) => !role || link.roles.includes(role)
+  );
 
   return (
     <header className="sticky top-0 z-40 w-full bg-surface-container-lowest border-b border-outline-variant">
@@ -44,7 +77,7 @@ export function WorkspaceHeader({ currentScope }: WorkspaceHeaderProps) {
         {/* Left: Brand + Scope Indicator */}
         <div className="flex items-center gap-3">
           <Link
-            href="/workspace/command-center"
+            href="/workspace"
             className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded py-1"
             aria-label="ClubOS Workspace"
           >
@@ -58,7 +91,7 @@ export function WorkspaceHeader({ currentScope }: WorkspaceHeaderProps) {
 
         {/* Center: Desktop Workspace Navigation */}
         <nav className="hidden lg:flex items-center gap-1" aria-label="Workspace Navigation">
-          {navLinks.map((link) => {
+          {visibleNavLinks.map((link) => {
             const isActive = pathname.startsWith(link.href);
             return (
               <Link
@@ -77,15 +110,30 @@ export function WorkspaceHeader({ currentScope }: WorkspaceHeaderProps) {
           })}
         </nav>
 
-        {/* Right: Quick actions + User menu + Mobile toggle */}
+        {/* Right: User identity info & Sign Out */}
         <div className="flex items-center gap-3">
-          <Link
-            href="/login"
-            className="text-body-sm text-secondary hover:text-error transition-colors hidden sm:inline-block"
-            title="Return to Login (Simulate Sign Out)"
-          >
-            Sign Out
-          </Link>
+          {(userName || userEmail) && (
+            <div className="hidden md:flex flex-col text-right">
+              <span className="text-body-sm font-medium text-on-surface leading-tight">
+                {userName || userEmail}
+              </span>
+              {role && (
+                <span className="text-label-code-xs text-secondary uppercase">
+                  {role.replace("_", " ")}
+                </span>
+              )}
+            </div>
+          )}
+
+          <form action="/auth/signout" method="POST">
+            <button
+              type="submit"
+              className="text-body-sm text-secondary hover:text-error transition-colors px-2 py-1 rounded hover:bg-surface-container focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
+              title="Terminate authenticated session"
+            >
+              Sign Out
+            </button>
+          </form>
 
           {/* Mobile Navigation Toggle */}
           <button
@@ -119,15 +167,17 @@ export function WorkspaceHeader({ currentScope }: WorkspaceHeaderProps) {
             <StatusBadge variant="group" size="sm">
               {scopeBadge}
             </StatusBadge>
-            <Link
-              href="/login"
-              onClick={() => setMobileOpen(false)}
-              className="text-body-sm text-error font-medium"
-            >
-              Sign Out
-            </Link>
+            <form action="/auth/signout" method="POST">
+              <button
+                type="submit"
+                onClick={() => setMobileOpen(false)}
+                className="text-body-sm text-error font-medium"
+              >
+                Sign Out
+              </button>
+            </form>
           </div>
-          {navLinks.map((link) => {
+          {visibleNavLinks.map((link) => {
             const isActive = pathname.startsWith(link.href);
             return (
               <Link

@@ -3,50 +3,39 @@
 import React from "react";
 import Link from "next/link";
 import { HeadlineSm, BodySm, LabelCaps } from "@/components/ui/Typography";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
 export default function ActivatePage() {
   return (
     <div className="flex flex-col gap-6 text-left">
       <div className="flex flex-col gap-1.5">
-        <LabelCaps className="text-primary font-bold">First-Time Setup</LabelCaps>
-        <HeadlineSm className="text-on-background">Activate Account</HeadlineSm>
-        <BodySm className="text-secondary">
-          Enter the activation token dispatched by your Main Head to initialize your institutional profile and set your key credential.
+        <LabelCaps className="text-primary font-bold">Controlled Lifecycle</LabelCaps>
+        <HeadlineSm className="text-on-background">Account Activation</HeadlineSm>
+        <BodySm className="text-secondary leading-relaxed">
+          ClubOS accounts are strictly invitation-only. Public self-registration is disabled under institutional access policies.
         </BodySm>
       </div>
 
-      <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-        <Input
-          label="Activation Token or Passcode"
-          type="text"
-          placeholder="e.g. ACT-9842-X7"
-          required
-        />
-        <Input
-          label="Set Password"
-          type="password"
-          placeholder="Minimum 10 characters"
-          required
-        />
-        <Input
-          label="Confirm Password"
-          type="password"
-          placeholder="Re-enter password"
-          required
-        />
+      <div className="p-4 bg-surface-container-low rounded border border-outline-variant flex flex-col gap-2">
+        <span className="text-body-sm font-semibold text-on-surface">
+          Institutional Invitation Required
+        </span>
+        <p className="text-body-sm text-secondary leading-relaxed">
+          To activate your membership, you must click the personalized invitation link sent directly to your institutional email by your organization&apos;s Main Head.
+        </p>
+      </div>
 
-        <Link href="/login" className="w-full mt-2">
+      <div className="flex flex-col gap-3">
+        <Link href="/login" className="w-full">
           <Button variant="primary" size="lg" className="w-full">
-            Complete Activation & Sign In
+            Return to Institutional Sign In
           </Button>
         </Link>
-      </form>
+      </div>
 
       <div className="pt-4 border-t border-outline-variant text-center">
-        <Link href="/login" className="text-body-sm text-secondary hover:text-on-surface">
-          ← Return to Sign In
+        <Link href="/" className="text-body-sm text-secondary hover:text-on-surface">
+          ← Return to Public Site
         </Link>
       </div>
     </div>

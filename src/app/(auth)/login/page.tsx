@@ -1,12 +1,27 @@
 "use client";
 
-import React from "react";
+import React, { useActionState } from "react";
 import Link from "next/link";
-import { HeadlineSm, BodySm, LabelCaps, LabelCode } from "@/components/ui/Typography";
+import { useSearchParams } from "next/navigation";
+import { HeadlineSm, BodySm, LabelCaps } from "@/components/ui/Typography";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { signInAction } from "@/lib/auth/actions";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirectTo") || "";
+  const message = searchParams.get("message");
+  const errorParam = searchParams.get("error");
+
+  const [state, formAction, isPending] = useActionState(signInAction, null);
+
+  const displayError =
+    state?.error ||
+    (errorParam === "recovery_failed"
+      ? "Password recovery link was invalid or has expired."
+      : null);
+
   return (
     <div className="flex flex-col gap-6 text-left">
       <div className="flex flex-col gap-1.5">
@@ -17,21 +32,40 @@ export default function LoginPage() {
         </BodySm>
       </div>
 
-      <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+      {message === "password_updated" && (
+        <div className="p-3 bg-surface-container rounded border border-primary/20 text-body-sm text-primary">
+          Password updated successfully. Please sign in with your new credential.
+        </div>
+      )}
+
+      {displayError && (
+        <div className="p-3 bg-error/10 rounded border border-error/30 text-body-sm text-error">
+          {displayError}
+        </div>
+      )}
+
+      <form action={formAction} className="flex flex-col gap-4">
+        <input type="hidden" name="redirectTo" value={redirectTo} />
+
         <Input
+          name="email"
           label="Institutional Email"
           type="email"
           placeholder="user@tinkershub.org"
           autoComplete="email"
           required
+          disabled={isPending}
         />
+
         <div className="flex flex-col gap-1">
           <Input
+            name="password"
             label="Password"
             type="password"
             placeholder="••••••••••••"
             autoComplete="current-password"
             required
+            disabled={isPending}
           />
           <div className="flex justify-end pt-1">
             <Link
@@ -43,11 +77,15 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <Link href="/workspace/command-center" className="w-full mt-2">
-          <Button variant="primary" size="lg" className="w-full">
-            Sign In to Workspace
-          </Button>
-        </Link>
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full mt-2"
+          disabled={isPending}
+        >
+          {isPending ? "Authenticating..." : "Sign In to Workspace"}
+        </Button>
       </form>
 
       <div className="pt-4 border-t border-outline-variant flex flex-col gap-3">
@@ -59,27 +97,6 @@ export default function LoginPage() {
           >
             Activate Account →
           </Link>
-        </div>
-
-        {/* Temporary Build 01 Quick Navigation Guide */}
-        <div className="p-3 bg-surface-container-low rounded border border-outline-variant flex flex-col gap-1.5">
-          <LabelCode size="sm" className="text-secondary font-semibold">
-            BUILD 01 • PROTOTYPE SHELL NAVIGATOR:
-          </LabelCode>
-          <div className="flex flex-wrap gap-2 text-label-code-sm">
-            <Link href="/workspace/command-center" className="text-primary hover:underline">
-              [Main Head]
-            </Link>
-            <Link href="/workspace/group" className="text-primary hover:underline">
-              [Group Head]
-            </Link>
-            <Link href="/workspace/my-day" className="text-primary hover:underline">
-              [Member]
-            </Link>
-            <Link href="/workspace/admin/members" className="text-primary hover:underline">
-              [Admin]
-            </Link>
-          </div>
         </div>
       </div>
     </div>

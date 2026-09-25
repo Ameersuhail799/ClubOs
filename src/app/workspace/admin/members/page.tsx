@@ -1,10 +1,19 @@
 import React from "react";
+import { redirect } from "next/navigation";
+import { getCurrentOrganizationContext, getRoleDefaultPath } from "@/lib/auth/context";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 
-export default function MembersAdminPage() {
+export default async function MembersAdminPage() {
+  const context = await getCurrentOrganizationContext();
+
+  // Strict role boundary: Only Main Head can access Admin Console
+  if (context.role !== "main_head") {
+    redirect(getRoleDefaultPath(context.role || "member"));
+  }
+
   return (
     <div className="py-8 flex flex-col gap-6">
       <PageContainer>

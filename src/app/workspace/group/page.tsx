@@ -1,11 +1,19 @@
 import React from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getCurrentOrganizationContext, getRoleDefaultPath } from "@/lib/auth/context";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 
-export default function GroupWorkspacePage() {
+export default async function GroupWorkspacePage() {
+  const context = await getCurrentOrganizationContext();
+
+  // Strict role boundary: Ordinary members cannot access Group Head workspace
+  if (context.role === "member") {
+    redirect(getRoleDefaultPath("member"));
+  }
   return (
     <div className="py-8 flex flex-col gap-6">
       <PageContainer>
