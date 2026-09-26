@@ -18,6 +18,9 @@ import {
   revokeTaskAccess,
   addComment,
   getEligibleAssignees,
+  getEligibleGroupHeads,
+  getTaskCreationContext,
+  getOrganizationDirectives,
 } from "./service";
 import type {
   TaskRow,
@@ -31,6 +34,8 @@ import type {
   TaskPriority,
   TaskComment,
   EligibleAssignee,
+  EligibleGroupHead,
+  TaskWithDetails,
 } from "./types";
 
 /**
@@ -38,32 +43,64 @@ import type {
  */
 export async function createTaskAction(
   prevState: TaskResult<TaskRow> | null,
-  formData: FormData
+  formDataOrInput: FormData | CreateTaskInput
 ): Promise<TaskResult<TaskRow>> {
-  const title = formData.get("title") as string;
-  const description = (formData.get("description") as string) || undefined;
-  const primaryGroupId = formData.get("primaryGroupId") as string;
-  const assignedHeadId = (formData.get("assignedHeadId") as string) || undefined;
-  const deadline = (formData.get("deadline") as string) || undefined;
-  const priority = (formData.get("priority") as TaskPriority) || "medium";
-  const isVolunteerPool = formData.get("isVolunteerPool") === "true";
+  let input: CreateTaskInput;
 
-  const result = await createTask({
-    title,
-    description,
-    primaryGroupId,
-    assignedHeadId,
-    deadline,
-    priority,
-    isVolunteerPool,
-  });
+  if (formDataOrInput instanceof FormData) {
+    input = {
+      title: (formDataOrInput.get("title") as string) || "",
+      description: (formDataOrInput.get("description") as string) || undefined,
+      primaryGroupId: (formDataOrInput.get("primaryGroupId") as string) || "",
+      assignedHeadId: (formDataOrInput.get("assignedHeadId") as string) || undefined,
+      deadline: (formDataOrInput.get("deadline") as string) || undefined,
+      priority: (formDataOrInput.get("priority") as TaskPriority) || "medium",
+      isVolunteerPool: formDataOrInput.get("isVolunteerPool") === "true",
+      clientSubmissionId: (formDataOrInput.get("clientSubmissionId") as string) || undefined,
+    };
+  } else {
+    input = formDataOrInput;
+  }
 
-  if (result.success) {
+  const result = await createTask(input);
+
+  if (result.success && result.data) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/command-center");
+    revalidatePath(`/workspace/tasks/${result.data.id}`);
   }
 
   return result;
+}
+
+/**
+ * Server Action to load eligible active Group Heads for task creation.
+ */
+export async function getEligibleGroupHeadsAction(
+  groupId?: string
+): Promise<TaskResult<EligibleGroupHead[]>> {
+  return getEligibleGroupHeads(groupId);
+}
+
+/**
+ * Server Action to load group and Group Head context for task creation drawer.
+ */
+export async function getTaskCreationContextAction(): Promise<
+  TaskResult<{
+    groups: Array<{ id: string; name: string; slug: string; description: string | null }>;
+    groupHeads: EligibleGroupHead[];
+  }>
+> {
+  return getTaskCreationContext();
+}
+
+/**
+ * Server Action to retrieve top-level directives for Command Center.
+ */
+export async function getOrganizationDirectivesAction(): Promise<
+  TaskResult<TaskWithDetails[]>
+> {
+  return getOrganizationDirectives();
 }
 
 /**

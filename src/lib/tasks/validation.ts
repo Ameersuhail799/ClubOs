@@ -17,6 +17,24 @@ export function validateTitle(title?: string | null): { valid: boolean; error?: 
   return { valid: true, cleanTitle: clean };
 }
 
+export function validateDescription(description?: string | null): {
+  valid: boolean;
+  error?: string;
+  cleanDescription?: string | null;
+} {
+  if (!description || typeof description !== "string") {
+    return { valid: true, cleanDescription: null };
+  }
+  const clean = description.trim();
+  if (clean.length === 0) {
+    return { valid: true, cleanDescription: null };
+  }
+  if (clean.length > 5000) {
+    return { valid: false, error: "Task description cannot exceed 5000 characters." };
+  }
+  return { valid: true, cleanDescription: clean };
+}
+
 export function validateDeadline(deadline?: string | null): { valid: boolean; error?: string; cleanDeadline?: string | null } {
   if (!deadline) {
     return { valid: true, cleanDeadline: null };

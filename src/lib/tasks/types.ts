@@ -41,6 +41,7 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   isVolunteerPool?: boolean;
   parentTaskId?: string | null;
+  clientSubmissionId?: string | null;
 }
 
 export interface DelegateTaskInput {
@@ -157,6 +158,15 @@ export interface EligibleAssignee {
   role: UserRole;
   primaryGroupId: string | null;
   primaryGroupName: string | null;
+}
+
+export interface EligibleGroupHead {
+  userId: string;
+  fullName: string;
+  email: string;
+  primaryGroupId: string;
+  primaryGroupName?: string | null;
+  primaryGroupSlug?: string | null;
 }
 
 export interface TaskWithFullDetails extends TaskWithDetails {

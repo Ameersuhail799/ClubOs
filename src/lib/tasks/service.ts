@@ -6,6 +6,7 @@ import type { Database } from "@/types/database.types";
 import { validateStatusTransition, type TransitionAuthContext } from "./transitions";
 import {
   validateTitle,
+  validateDescription,
   validateDeadline,
   validatePriority,
   generateDeterministicTaskCode,
@@ -28,6 +29,7 @@ import type {
   TaskActivity,
   TaskAccessDetail,
   EligibleAssignee,
+  EligibleGroupHead,
   TaskWithFullDetails,
 } from "./types";
 
@@ -96,6 +98,11 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult<Tas
     return { error: titleVal.error, code: "forbidden" };
   }
 
+  const descVal = validateDescription(input.description);
+  if (!descVal.valid) {
+    return { error: descVal.error, code: "forbidden" };
+  }
+
   const deadlineVal = validateDeadline(input.deadline);
   if (!deadlineVal.valid) {
     return { error: deadlineVal.error, code: "deadline_invalid" };
@@ -106,6 +113,15 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult<Tas
   const adminClient = createAdminClient();
 
   // 3. Verify primary group belongs to caller's organization
+  if (!input.primaryGroupId || typeof input.primaryGroupId !== "string" || !input.primaryGroupId.trim()) {
+    return { error: "Primary group is required.", code: "invalid_group" };
+  }
+
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(input.primaryGroupId)) {
+    return { error: "Invalid primary group ID format.", code: "invalid_group" };
+  }
+
   const { data: primaryGroup, error: groupErr } = await adminClient
     .from("groups")
     .select("id, name, slug")
@@ -118,34 +134,74 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult<Tas
   }
 
   // 4. Validate assigned Group Head
-  if (input.assignedHeadId) {
-    const { data: headMember } = await adminClient
-      .from("organization_members")
-      .select("id, user_id, role, primary_group_id, status")
-      .eq("organization_id", organizationId)
-      .eq("user_id", input.assignedHeadId)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (!headMember) {
-      return {
-        error: "Assigned Group Head is not an active member of your organization.",
-        code: "invalid_assignee",
-      };
-    }
-
-    if (headMember.primary_group_id !== input.primaryGroupId) {
-      return {
-        error: "Assigned Group Head does not belong to the task's primary group.",
-        code: "invalid_assignee",
-      };
-    }
+  if (!input.assignedHeadId || typeof input.assignedHeadId !== "string" || !input.assignedHeadId.trim()) {
+    return { error: "Responsible Group Head is required.", code: "invalid_assignee" };
   }
 
-  // 5. Generate deterministic task code
+  if (!uuidRegex.test(input.assignedHeadId)) {
+    return { error: "Invalid Group Head ID format.", code: "invalid_assignee" };
+  }
+
+  // Query organization_members for assignedHeadId
+  const { data: headMember } = await adminClient
+    .from("organization_members")
+    .select("id, user_id, role, primary_group_id, status")
+    .eq("organization_id", organizationId)
+    .eq("user_id", input.assignedHeadId)
+    .maybeSingle();
+
+  if (!headMember) {
+    return {
+      error: "Assigned Group Head does not belong to your organization.",
+      code: "invalid_assignee",
+    };
+  }
+
+  if (headMember.status === "deactivated" || headMember.status !== "active") {
+    return {
+      error: `Assigned Group Head account is ${headMember.status} (must be active).`,
+      code: "inactive_member",
+    };
+  }
+
+  if (headMember.role !== "group_head") {
+    return {
+      error: "Assigned head must have the Group Head role.",
+      code: "invalid_assignee",
+    };
+  }
+
+  if (headMember.primary_group_id !== input.primaryGroupId) {
+    return {
+      error: "Assigned Group Head does not belong to the task's primary group.",
+      code: "invalid_assignee",
+    };
+  }
+
+  // 5. Double-submission protection: check if identical task was created by caller within 10 seconds
+  const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
+  const { data: recentDuplicate } = await adminClient
+    .from("tasks")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("created_by", context.user.id)
+    .eq("primary_group_id", input.primaryGroupId)
+    .eq("title", titleVal.cleanTitle!)
+    .gte("created_at", tenSecondsAgo)
+    .maybeSingle();
+
+  if (recentDuplicate) {
+    return {
+      success: true,
+      data: recentDuplicate,
+      message: "Duplicate submission ignored; existing task returned.",
+    };
+  }
+
+  // 6. Generate deterministic task code
   const taskCode = await generateDeterministicTaskCode(organizationId, primaryGroup.slug);
 
-  // 6. Insert task record
+  // 7. Insert task record
   const initialStatus: TaskStatus = "assigned";
   const { data: newTask, error: insertErr } = await adminClient
     .from("tasks")
@@ -153,11 +209,11 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult<Tas
       organization_id: organizationId,
       task_code: taskCode,
       title: titleVal.cleanTitle!,
-      description: input.description?.trim() || null,
+      description: descVal.cleanDescription,
       primary_group_id: input.primaryGroupId,
       created_by: context.user.id,
-      assigned_head_id: input.assignedHeadId || null,
-      assignee_id: input.assigneeId || null,
+      assigned_head_id: input.assignedHeadId,
+      assignee_id: null,
       status: initialStatus,
       priority: cleanPriority,
       deadline: deadlineVal.cleanDeadline,
@@ -2113,5 +2169,206 @@ export async function getEligibleAssignees(
   }));
 
   return { success: true, data: eligible };
+}
+
+/**
+ * Retrieves eligible active Group Heads for task assignment.
+ * Strictly verifies caller is an active Main Head in their organization.
+ * Filters by groupId if specified.
+ */
+export async function getEligibleGroupHeads(
+  groupId?: string
+): Promise<TaskResult<EligibleGroupHead[]>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  if (context.role !== "main_head") {
+    return {
+      error: "Access Denied: Only Main Heads may query eligible Group Heads.",
+      code: "forbidden",
+    };
+  }
+
+  const adminClient = createAdminClient();
+
+  let query = adminClient
+    .from("organization_members")
+    .select("user_id, primary_group_id, groups(id, name, slug)")
+    .eq("organization_id", organizationId)
+    .eq("role", "group_head")
+    .eq("status", "active")
+    .not("primary_group_id", "is", null);
+
+  if (groupId) {
+    query = query.eq("primary_group_id", groupId);
+  }
+
+  const { data: members, error: memErr } = await query;
+
+  if (memErr || !members) {
+    return { error: `Failed to load Group Heads: ${memErr?.message}`, code: "internal_error" };
+  }
+
+  if (members.length === 0) {
+    return { success: true, data: [] };
+  }
+
+  const userIds = members.map((m) => m.user_id);
+  const { data: profiles, error: profErr } = await adminClient
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("id", userIds);
+
+  if (profErr) {
+    return { error: `Failed to load profiles: ${profErr.message}`, code: "internal_error" };
+  }
+
+  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+  const result: EligibleGroupHead[] = members.map((m) => {
+    const prof = profileMap.get(m.user_id);
+    const grp = m.groups as { id: string; name: string; slug: string } | null;
+    return {
+      userId: m.user_id,
+      fullName: prof?.full_name || "Unknown",
+      email: prof?.email || "",
+      primaryGroupId: m.primary_group_id!,
+      primaryGroupName: grp?.name || null,
+      primaryGroupSlug: grp?.slug || null,
+    };
+  });
+
+  return { success: true, data: result };
+}
+
+/**
+ * Loads groups and active Group Heads for Main Head task creation drawer.
+ */
+export async function getTaskCreationContext(): Promise<
+  TaskResult<{
+    groups: Array<{ id: string; name: string; slug: string; description: string | null }>;
+    groupHeads: EligibleGroupHead[];
+  }>
+> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  if (context.role !== "main_head") {
+    return {
+      error: "Access Denied: Only Main Heads may access task creation context.",
+      code: "forbidden",
+    };
+  }
+
+  const adminClient = createAdminClient();
+
+  const [groupsRes, headsRes] = await Promise.all([
+    adminClient
+      .from("groups")
+      .select("id, name, slug, description")
+      .eq("organization_id", organizationId)
+      .order("name", { ascending: true }),
+    getEligibleGroupHeads(),
+  ]);
+
+  if (groupsRes.error || !groupsRes.data) {
+    return { error: `Failed to load groups: ${groupsRes.error?.message}`, code: "internal_error" };
+  }
+
+  return {
+    success: true,
+    data: {
+      groups: groupsRes.data,
+      groupHeads: headsRes.data || [],
+    },
+  };
+}
+
+/**
+ * Retrieves top-level organizational directives for the Command Center registry.
+ */
+export async function getOrganizationDirectives(): Promise<TaskResult<TaskWithDetails[]>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  if (context.role !== "main_head") {
+    return {
+      error: "Access Denied: Only Main Heads may view organizational directives.",
+      code: "forbidden",
+    };
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: tasks, error } = await adminClient
+    .from("tasks")
+    .select(`
+      *,
+      primary_group:groups(id, name, slug)
+    `)
+    .eq("organization_id", organizationId)
+    .is("parent_task_id", null)
+    .order("created_at", { ascending: false });
+
+  if (error || !tasks) {
+    return { error: `Failed to load directives: ${error?.message}`, code: "internal_error" };
+  }
+
+  // Load profiles for assigned heads and creators
+  const userIds = Array.from(
+    new Set(
+      tasks
+        .flatMap((t) => [t.assigned_head_id, t.created_by])
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  let profileMap = new Map<string, { id: string; fullName: string; email: string }>();
+  if (userIds.length > 0) {
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", userIds);
+
+    for (const p of profiles || []) {
+      profileMap.set(p.id, { id: p.id, fullName: p.full_name || "Unknown", email: p.email || "" });
+    }
+  }
+
+  const result: TaskWithDetails[] = tasks.map((t) => {
+    const group = t.primary_group as { id: string; name: string; slug: string } | null;
+    return {
+      ...t,
+      primaryGroup: group,
+      assignedHeadProfile: t.assigned_head_id ? profileMap.get(t.assigned_head_id) || null : null,
+      creatorProfile: t.created_by ? profileMap.get(t.created_by) || null : null,
+    };
+  });
+
+  return { success: true, data: result };
 }
 
