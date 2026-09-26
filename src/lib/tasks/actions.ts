@@ -21,6 +21,7 @@ import {
   getEligibleGroupHeads,
   getTaskCreationContext,
   getOrganizationDirectives,
+  getGroupWorkspaceData,
 } from "./service";
 import type {
   TaskRow,
@@ -36,6 +37,7 @@ import type {
   EligibleAssignee,
   EligibleGroupHead,
   TaskWithDetails,
+  GroupWorkspaceData,
 } from "./types";
 
 /**
@@ -108,33 +110,43 @@ export async function getOrganizationDirectivesAction(): Promise<
  */
 export async function delegateTaskAction(
   prevState: TaskResult<TaskRow> | null,
-  formData: FormData
+  formDataOrInput: FormData | DelegateTaskInput
 ): Promise<TaskResult<TaskRow>> {
-  const parentTaskId = formData.get("parentTaskId") as string;
-  const title = formData.get("title") as string;
-  const description = (formData.get("description") as string) || undefined;
-  const assigneeId = formData.get("assigneeId") as string;
-  const deadline = (formData.get("deadline") as string) || undefined;
-  const priority = (formData.get("priority") as TaskPriority) || undefined;
+  let input: DelegateTaskInput;
 
-  const result = await delegateTask({
-    parentTaskId,
-    title,
-    description,
-    assigneeId,
-    deadline,
-    priority,
-  });
+  if (formDataOrInput instanceof FormData) {
+    input = {
+      parentTaskId: (formDataOrInput.get("parentTaskId") as string) || "",
+      title: (formDataOrInput.get("title") as string) || "",
+      description: (formDataOrInput.get("description") as string) || undefined,
+      assigneeId: (formDataOrInput.get("assigneeId") as string) || "",
+      deadline: (formDataOrInput.get("deadline") as string) || undefined,
+      priority: (formDataOrInput.get("priority") as TaskPriority) || undefined,
+    };
+  } else {
+    input = formDataOrInput;
+  }
+
+  const result = await delegateTask(input);
 
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
-    if (parentTaskId) {
-      revalidatePath(`/workspace/tasks/${parentTaskId}`);
+    if (input.parentTaskId) {
+      revalidatePath(`/workspace/tasks/${input.parentTaskId}`);
     }
   }
 
   return result;
+}
+
+/**
+ * Server Action to load group workspace dataset.
+ */
+export async function getGroupWorkspaceDataAction(
+  targetGroupId?: string
+): Promise<TaskResult<GroupWorkspaceData>> {
+  return getGroupWorkspaceData(targetGroupId);
 }
 
 /**
@@ -144,6 +156,7 @@ export async function acceptTaskAction(taskId: string): Promise<TaskResult<TaskR
   const result = await acceptTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -156,6 +169,7 @@ export async function startTaskAction(taskId: string): Promise<TaskResult<TaskRo
   const result = await startTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -168,6 +182,7 @@ export async function submitTaskForReviewAction(taskId: string): Promise<TaskRes
   const result = await submitTaskForReview(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -180,6 +195,7 @@ export async function completeTaskAction(taskId: string): Promise<TaskResult<Tas
   const result = await completeTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -195,6 +211,7 @@ export async function requestChangesAction(
   const result = await requestChanges(taskId, feedback);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -210,6 +227,7 @@ export async function blockTaskAction(
   const result = await blockTask(taskId, reason);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -222,6 +240,7 @@ export async function unblockTaskAction(taskId: string): Promise<TaskResult<Task
   const result = await unblockTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -237,6 +256,7 @@ export async function cancelTaskAction(
   const result = await cancelTask(taskId, reason);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;

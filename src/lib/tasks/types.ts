@@ -1,5 +1,5 @@
 import type { Database } from "@/types/database.types";
-import type { UserRole } from "@/lib/auth/context";
+import type { UserRole, MemberStatus } from "@/lib/auth/context";
 
 export type TaskStatus = Database["public"]["Enums"]["task_status"];
 export type TaskPriority = Database["public"]["Enums"]["task_priority"];
@@ -167,6 +167,29 @@ export interface EligibleGroupHead {
   primaryGroupId: string;
   primaryGroupName?: string | null;
   primaryGroupSlug?: string | null;
+}
+
+export interface GroupMemberWorkload {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  status: MemberStatus;
+  avatarUrl: string | null;
+  activeTaskCount: number;
+  availability: "Available" | "Moderate" | "Busy";
+  activeTasks: Array<{ id: string; taskCode: string; title: string; status: TaskStatus; priority: TaskPriority; deadline: string | null }>;
+}
+
+export interface GroupWorkspaceData {
+  group: { id: string; name: string; slug: string; description: string | null };
+  tasks: TaskWithDetails[];
+  parentDirectives: TaskWithDetails[];
+  subtasks: TaskWithDetails[];
+  members: GroupMemberWorkload[];
+  needsActionCount: number;
+  currentUserId: string;
+  currentUserRole: UserRole;
 }
 
 export interface TaskWithFullDetails extends TaskWithDetails {

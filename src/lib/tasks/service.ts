@@ -31,6 +31,8 @@ import type {
   EligibleAssignee,
   EligibleGroupHead,
   TaskWithFullDetails,
+  GroupWorkspaceData,
+  GroupMemberWorkload,
 } from "./types";
 
 /**
@@ -327,12 +329,25 @@ export async function delegateTask(input: DelegateTaskInput): Promise<TaskResult
     .select("id, user_id, role, primary_group_id, status")
     .eq("organization_id", organizationId)
     .eq("user_id", input.assigneeId)
-    .eq("status", "active")
     .maybeSingle();
 
   if (memErr || !assigneeMember) {
     return {
-      error: "Target delegate is not an active member of your organization.",
+      error: "Target delegate does not belong to your organization.",
+      code: "invalid_assignee",
+    };
+  }
+
+  if (assigneeMember.status === "deactivated" || assigneeMember.status !== "active") {
+    return {
+      error: `Target delegate account is ${assigneeMember.status} (must be active).`,
+      code: "inactive_member",
+    };
+  }
+
+  if (assigneeMember.role !== "member") {
+    return {
+      error: "Subtasks must be delegated to members.",
       code: "invalid_assignee",
     };
   }
@@ -350,6 +365,11 @@ export async function delegateTask(input: DelegateTaskInput): Promise<TaskResult
     return { error: titleVal.error, code: "forbidden" };
   }
 
+  const descVal = validateDescription(input.description);
+  if (!descVal.valid) {
+    return { error: descVal.error, code: "forbidden" };
+  }
+
   const deadlineVal = validateDeadline(input.deadline);
   if (!deadlineVal.valid) {
     return { error: deadlineVal.error, code: "deadline_invalid" };
@@ -357,7 +377,28 @@ export async function delegateTask(input: DelegateTaskInput): Promise<TaskResult
 
   const { cleanPriority } = validatePriority(input.priority || parentTask.priority);
 
-  // 4. Fetch group details for task code generation
+  // 4. Double-submission protection: check if identical child task was created by caller within 10 seconds
+  const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
+  const { data: recentDuplicate } = await adminClient
+    .from("tasks")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("created_by", context.user.id)
+    .eq("parent_task_id", parentTask.id)
+    .eq("assignee_id", input.assigneeId)
+    .eq("title", titleVal.cleanTitle!)
+    .gte("created_at", tenSecondsAgo)
+    .maybeSingle();
+
+  if (recentDuplicate) {
+    return {
+      success: true,
+      data: recentDuplicate,
+      message: "Duplicate delegation ignored; existing subtask returned.",
+    };
+  }
+
+  // 5. Fetch group details for task code generation
   const { data: group } = await adminClient
     .from("groups")
     .select("slug")
@@ -366,7 +407,7 @@ export async function delegateTask(input: DelegateTaskInput): Promise<TaskResult
 
   const taskCode = await generateDeterministicTaskCode(organizationId, group?.slug || "sub");
 
-  // 5. Insert child task
+  // 6. Insert child task
   const initialStatus: TaskStatus = "assigned";
   const { data: childTask, error: insertErr } = await adminClient
     .from("tasks")
@@ -374,7 +415,7 @@ export async function delegateTask(input: DelegateTaskInput): Promise<TaskResult
       organization_id: organizationId,
       task_code: taskCode,
       title: titleVal.cleanTitle!,
-      description: input.description?.trim() || null,
+      description: descVal.cleanDescription,
       primary_group_id: parentTask.primary_group_id,
       created_by: context.user.id,
       assigned_head_id: parentTask.assigned_head_id || (isGroupHead ? context.user.id : null),
@@ -2370,5 +2411,219 @@ export async function getOrganizationDirectives(): Promise<TaskResult<TaskWithDe
   });
 
   return { success: true, data: result };
+}
+
+/**
+ * Retrieves the comprehensive group workspace dataset for the Group Head workspace.
+ * Strictly verifies caller is an active Group Head (or Main Head).
+ * Scopes tasks, directives, subtasks, and member roster strictly to the primary group.
+ */
+export async function getGroupWorkspaceData(
+  targetGroupId?: string
+): Promise<TaskResult<GroupWorkspaceData>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  const role = context.role;
+  if (role !== "group_head" && role !== "main_head") {
+    return {
+      error: "Access Denied: Only Group Heads and Main Heads may access the group workspace.",
+      code: "forbidden",
+    };
+  }
+
+  // Determine authoritative group ID
+  let groupId: string | null = null;
+  if (role === "group_head") {
+    groupId = context.primaryGroup?.id || null;
+    if (!groupId) {
+      return {
+        error: "Your account is not assigned to a primary functional group.",
+        code: "invalid_group",
+      };
+    }
+  } else {
+    // Main Head can view any group within their organization
+    groupId = targetGroupId || null;
+  }
+
+  const adminClient = createAdminClient();
+
+  // If Main Head didn't specify a group, pick the first group in the organization
+  if (!groupId) {
+    const { data: firstGroup } = await adminClient
+      .from("groups")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .order("name", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    groupId = firstGroup?.id || null;
+  }
+
+  if (!groupId) {
+    return { error: "No functional group found in organization.", code: "invalid_group" };
+  }
+
+  // 1. Fetch group details
+  const { data: group, error: groupErr } = await adminClient
+    .from("groups")
+    .select("id, name, slug, description")
+    .eq("id", groupId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (groupErr || !group) {
+    return { error: "Functional group not found.", code: "invalid_group" };
+  }
+
+  // 2. Fetch all tasks in this group
+  const { data: rawTasks, error: tasksErr } = await adminClient
+    .from("tasks")
+    .select(`
+      *,
+      primary_group:groups(id, name, slug)
+    `)
+    .eq("organization_id", organizationId)
+    .eq("primary_group_id", groupId)
+    .order("created_at", { ascending: false });
+
+  if (tasksErr || !rawTasks) {
+    return { error: `Failed to load group tasks: ${tasksErr?.message}`, code: "internal_error" };
+  }
+
+  // 3. Fetch active members of this group
+  const { data: members, error: memErr } = await adminClient
+    .from("organization_members")
+    .select("id, user_id, role, primary_group_id, status")
+    .eq("organization_id", organizationId)
+    .eq("primary_group_id", groupId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+
+  if (memErr || !members) {
+    return { error: `Failed to load group members: ${memErr?.message}`, code: "internal_error" };
+  }
+
+  // 4. Gather user profiles
+  const taskUserIds = rawTasks.flatMap((t) => [t.assigned_head_id, t.assignee_id, t.created_by]);
+  const memberUserIds = members.map((m) => m.user_id);
+  const allUserIds = Array.from(new Set([...taskUserIds, ...memberUserIds].filter((id): id is string => Boolean(id))));
+
+  let profileMap = new Map<string, { id: string; fullName: string; email: string; avatarUrl: string | null }>();
+  if (allUserIds.length > 0) {
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("id, full_name, email, avatar_url")
+      .in("id", allUserIds);
+
+    for (const p of profiles || []) {
+      profileMap.set(p.id, {
+        id: p.id,
+        fullName: p.full_name || "Unknown",
+        email: p.email || "",
+        avatarUrl: p.avatar_url || null,
+      });
+    }
+  }
+
+  // 5. Structure tasks with details
+  const enrichedTasks: TaskWithDetails[] = rawTasks.map((t) => {
+    const grp = t.primary_group as { id: string; name: string; slug: string } | null;
+    return {
+      ...t,
+      primaryGroup: grp,
+      assignedHeadProfile: t.assigned_head_id ? profileMap.get(t.assigned_head_id) || null : null,
+      assigneeProfile: t.assignee_id ? profileMap.get(t.assignee_id) || null : null,
+      creatorProfile: t.created_by ? profileMap.get(t.created_by) || null : null,
+    };
+  });
+
+  const parentDirectives = enrichedTasks.filter((t) => !t.parent_task_id);
+  const subtasks = enrichedTasks.filter((t) => Boolean(t.parent_task_id));
+
+  // Map child subtasks into their parent directives
+  const subtasksByParent = new Map<string, TaskRow[]>();
+  for (const s of subtasks) {
+    if (s.parent_task_id) {
+      const list = subtasksByParent.get(s.parent_task_id) || [];
+      list.push(s);
+      subtasksByParent.set(s.parent_task_id, list);
+    }
+  }
+  for (const p of parentDirectives) {
+    p.childTasks = subtasksByParent.get(p.id) || [];
+  }
+
+  // 6. Calculate member workload matrix
+  const memberWorkloads: GroupMemberWorkload[] = members.map((m) => {
+    const prof = profileMap.get(m.user_id);
+    const activeTasks = enrichedTasks
+      .filter(
+        (t) =>
+          t.assignee_id === m.user_id &&
+          t.status !== "completed" &&
+          t.status !== "cancelled"
+      )
+      .map((t) => ({
+        id: t.id,
+        taskCode: t.task_code,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        deadline: t.deadline,
+      }));
+
+    const count = activeTasks.length;
+    let availability: "Available" | "Moderate" | "Busy" = "Available";
+    if (count >= 5) {
+      availability = "Busy";
+    } else if (count >= 3) {
+      availability = "Moderate";
+    }
+
+    return {
+      userId: m.user_id,
+      fullName: prof?.fullName || "Group Member",
+      email: prof?.email || "",
+      role: m.role,
+      status: m.status,
+      avatarUrl: prof?.avatarUrl || null,
+      activeTaskCount: count,
+      availability,
+      activeTasks,
+    };
+  });
+
+  // 7. Calculate "Needs Action" count
+  const needsActionCount = enrichedTasks.filter((t) => {
+    if (t.status === "assigned" && (t.assigned_head_id === context.user.id || role === "main_head")) return true;
+    if (t.status === "ready_for_review") return true;
+    if (t.status === "blocked") return true;
+    return false;
+  }).length;
+
+  return {
+    success: true,
+    data: {
+      group,
+      tasks: enrichedTasks,
+      parentDirectives,
+      subtasks,
+      members: memberWorkloads,
+      needsActionCount,
+      currentUserId: context.user.id,
+      currentUserRole: role,
+    },
+  };
 }
 
