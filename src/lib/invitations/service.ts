@@ -69,8 +69,12 @@ export async function createInstitutionalInvitation(
     return { error: "A valid institutional email address is required." };
   }
 
-  if (!["main_head", "group_head", "member"].includes(role)) {
-    return { error: "Invalid role specified." };
+  if (role === "main_head") {
+    return { error: "Security Restriction: Main Head accounts cannot be provisioned through this interface. Only group heads and members can be invited." };
+  }
+
+  if (!["group_head", "member"].includes(role)) {
+    return { error: "Invalid role specified. Only group_head and member roles are permitted." };
   }
 
   const adminClient = createAdminClient();
@@ -216,6 +220,27 @@ export async function createInstitutionalInvitation(
     }
     memberRecordId = memberData.id;
 
+    // Log immutable administrative audit record
+    await adminClient.from("activity_records").insert({
+      organization_id: organizationId,
+      actor_id: context.user.id,
+      task_id: null,
+      entity_type: "invitation",
+      entity_id: invitationRecordId,
+      action: "invitation_created",
+      previous_state: null,
+      new_state: {
+        status: "pending",
+        role,
+        primary_group_id: primaryGroupId,
+        email,
+      },
+      metadata: {
+        full_name: fullName,
+        phone,
+      },
+    });
+
     return {
       success: true,
       message: `Invitation successfully dispatched to ${email}.`,
@@ -296,6 +321,19 @@ export async function resendInstitutionalInvitation(
     .from("invitations")
     .update({ expires_at: newExpiresAt })
     .eq("id", invitationId);
+
+  // Log immutable administrative audit record
+  await adminClient.from("activity_records").insert({
+    organization_id: organizationId,
+    actor_id: context.user.id,
+    task_id: null,
+    entity_type: "invitation",
+    entity_id: invitationId,
+    action: "invitation_resent",
+    previous_state: { expires_at: invitation.expires_at },
+    new_state: { expires_at: newExpiresAt },
+    metadata: { email: invitation.email, role: invitation.role },
+  });
 
   return {
     success: true,
