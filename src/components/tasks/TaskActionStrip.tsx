@@ -28,7 +28,7 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
 
   // Modal / Input dialog states
   const [activeModal, setActiveModal] = useState<
-    "none" | "request_changes" | "block" | "cancel" | "reassign" | "parameters" | "whatsapp"
+    "none" | "request_changes" | "block" | "cancel" | "reassign" | "parameters"
   >("none");
 
   // Form field states
@@ -133,21 +133,6 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
         if (onRefresh) onRefresh();
       }
     });
-  };
-
-  // WhatsApp safe handoff summary generator
-  const getWhatsAppSummary = () => {
-    const lines = [
-      `*CLUBOS TASK HANDOFF*`,
-      `*Task Code:* ${task.task_code}`,
-      `*Title:* ${task.title}`,
-      `*Status:* ${task.status.toUpperCase()}`,
-      `*Priority:* ${task.priority.toUpperCase()}`,
-      task.deadline ? `*Deadline:* ${new Date(task.deadline).toLocaleDateString()}` : null,
-      task.primaryGroup ? `*Group:* ${task.primaryGroup.name}` : null,
-      `*Link:* ${typeof window !== "undefined" ? window.location.href : ""}`,
-    ].filter(Boolean);
-    return encodeURIComponent(lines.join("\n"));
   };
 
   return (
@@ -292,17 +277,6 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
               Cancel
             </Button>
           )}
-
-          {/* Safe WhatsApp Clarification */}
-          <a
-            href={`https://wa.me/?text=${getWhatsAppSummary()}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center font-sans font-medium h-7 px-2.5 text-body-sm rounded border border-outline-variant bg-surface-container text-secondary hover:text-on-surface hover:bg-surface-container-high transition-colors"
-            title="Safe WhatsApp task handoff with zero credentials"
-          >
-            WhatsApp Handoff
-          </a>
         </div>
       </div>
 

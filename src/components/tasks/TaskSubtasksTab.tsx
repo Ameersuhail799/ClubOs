@@ -1,28 +1,17 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React from "react";
 import Link from "next/link";
 import { LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge, type StatusVariant } from "@/components/ui/StatusBadge";
-import { Button } from "@/components/ui/Button";
-import { delegateTaskAction } from "@/lib/tasks/actions";
-import type { TaskWithFullDetails, TaskStatus, TaskPriority } from "@/lib/tasks/types";
+import type { TaskWithFullDetails, TaskStatus } from "@/lib/tasks/types";
 
 interface TaskSubtasksTabProps {
   task: TaskWithFullDetails;
   onRefresh?: () => void;
 }
 
-export function TaskSubtasksTab({ task, onRefresh }: TaskSubtasksTabProps) {
-  const [isDelegating, setIsDelegating] = useState(false);
-  const [subtaskTitle, setSubtaskTitle] = useState("");
-  const [subtaskDescription, setSubtaskDescription] = useState("");
-  const [subtaskAssigneeId, setSubtaskAssigneeId] = useState("");
-  const [subtaskDeadline, setSubtaskDeadline] = useState("");
-  const [subtaskPriority, setSubtaskPriority] = useState<TaskPriority>("medium");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
+export function TaskSubtasksTab({ task }: TaskSubtasksTabProps) {
   const statusVariantMap: Record<TaskStatus, StatusVariant> = {
     draft: "neutral",
     assigned: "pending",
@@ -45,49 +34,13 @@ export function TaskSubtasksTab({ task, onRefresh }: TaskSubtasksTabProps) {
     cancelled: "Cancelled",
   };
 
-  const canDelegate =
-    (task.currentUserRole === "main_head" || task.currentUserRole === "group_head") &&
-    task.status !== "completed" &&
-    task.status !== "cancelled";
-
   const completedSubtasks = task.subtasks.filter((s) => s.status === "completed").length;
   const totalSubtasks = task.subtasks.length;
   const progressPct = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
 
-  const handleDelegateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!subtaskTitle.trim() || !subtaskAssigneeId) {
-      setErrorMsg("Title and assignee are required to delegate a subtask.");
-      return;
-    }
-
-    setErrorMsg(null);
-    startTransition(async () => {
-      const formData = new FormData();
-      formData.set("parentTaskId", task.id);
-      formData.set("title", subtaskTitle.trim());
-      if (subtaskDescription.trim()) formData.set("description", subtaskDescription.trim());
-      formData.set("assigneeId", subtaskAssigneeId);
-      if (subtaskDeadline) formData.set("deadline", new Date(subtaskDeadline).toISOString());
-      formData.set("priority", subtaskPriority);
-
-      const res = await delegateTaskAction(null, formData);
-      if (!res.success && res.error) {
-        setErrorMsg(res.error);
-      } else {
-        setIsDelegating(false);
-        setSubtaskTitle("");
-        setSubtaskDescription("");
-        setSubtaskAssigneeId("");
-        setSubtaskDeadline("");
-        if (onRefresh) onRefresh();
-      }
-    });
-  };
-
   return (
     <div className="flex flex-col gap-6">
-      {/* Subtask Summary & Delegation Trigger */}
+      {/* Subtask Summary */}
       <div className="p-6 rounded bg-surface-container-lowest border border-outline-variant flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col gap-1.5">
           <LabelCaps className="text-secondary font-semibold">Subtask Delegation Tree</LabelCaps>
@@ -103,132 +56,7 @@ export function TaskSubtasksTab({ task, onRefresh }: TaskSubtasksTabProps) {
             </div>
           </div>
         </div>
-
-        {canDelegate && !isDelegating && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setIsDelegating(true)}
-            className="text-body-sm h-8"
-          >
-            + Delegate Subtask
-          </Button>
-        )}
       </div>
-
-      {errorMsg && (
-        <div className="p-3 rounded bg-error-container text-on-error-container text-body-sm border border-error/20">
-          {errorMsg}
-        </div>
-      )}
-
-      {/* Inline Delegation Form for Heads */}
-      {isDelegating && (
-        <form
-          onSubmit={handleDelegateSubmit}
-          className="p-5 rounded bg-surface-container-lowest border border-primary/30 flex flex-col gap-4"
-        >
-          <div className="flex items-center justify-between pb-2 border-b border-outline-variant">
-            <h4 className="font-sans font-semibold text-body-md text-on-surface">
-              Delegate Child Subtask under Directive
-            </h4>
-            <button
-              type="button"
-              onClick={() => setIsDelegating(false)}
-              className="text-secondary hover:text-on-surface text-sm"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-label-caps text-secondary font-semibold">Subtask Title *</label>
-            <input
-              type="text"
-              value={subtaskTitle}
-              onChange={(e) => setSubtaskTitle(e.target.value)}
-              placeholder="e.g. Draft sponsorship proposal PDF"
-              required
-              className="p-2 rounded border border-outline-variant bg-background text-on-surface text-body-sm focus:outline-none focus:border-primary"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-label-caps text-secondary font-semibold">
-              Scope of Work / Instructions
-            </label>
-            <textarea
-              value={subtaskDescription}
-              onChange={(e) => setSubtaskDescription(e.target.value)}
-              placeholder="Provide clear deliverable expectations, links, or constraints..."
-              rows={2}
-              className="p-2 rounded border border-outline-variant bg-background text-on-surface text-body-sm focus:outline-none focus:border-primary resize-y"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-label-caps text-secondary font-semibold">
-                Assignee Member *
-              </label>
-              <select
-                value={subtaskAssigneeId}
-                onChange={(e) => setSubtaskAssigneeId(e.target.value)}
-                required
-                className="p-2 rounded border border-outline-variant bg-background text-on-surface text-body-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">Select Member...</option>
-                {task.eligibleAssignees
-                  ?.filter((m) => m.role === "member")
-                  .map((m) => (
-                    <option key={m.userId} value={m.userId}>
-                      {m.fullName}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-label-caps text-secondary font-semibold">Deadline</label>
-              <input
-                type="date"
-                value={subtaskDeadline}
-                onChange={(e) => setSubtaskDeadline(e.target.value)}
-                className="p-2 rounded border border-outline-variant bg-background text-on-surface text-body-sm focus:outline-none focus:border-primary"
-              >
-              </input>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-label-caps text-secondary font-semibold">Priority</label>
-              <select
-                value={subtaskPriority}
-                onChange={(e) => setSubtaskPriority(e.target.value as TaskPriority)}
-                className="p-2 rounded border border-outline-variant bg-background text-on-surface text-body-sm focus:outline-none focus:border-primary"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-outline-variant">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsDelegating(false)}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" size="sm" isLoading={isPending}>
-              Issue Delegated Subtask
-            </Button>
-          </div>
-        </form>
-      )}
 
       {/* Subtask Hierarchical List */}
       <div className="p-6 rounded bg-surface-container-lowest border border-outline-variant flex flex-col gap-4">
@@ -301,8 +129,7 @@ export function TaskSubtasksTab({ task, onRefresh }: TaskSubtasksTabProps) {
               No child subtasks have been delegated under this directive yet.
             </span>
             <span className="text-body-sm text-secondary max-w-md">
-              Group Heads can break directives down into specific member deliverables using the
-              delegation trigger above.
+              Child subtasks assigned under this directive will appear here in the operational hierarchy.
             </span>
           </div>
         )}
