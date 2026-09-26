@@ -96,3 +96,109 @@ export interface TaskWithDetails extends TaskRow {
     groupName?: string | null;
   }>;
 }
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  organizationId: string;
+  authorId: string;
+  authorName: string;
+  authorRole?: UserRole | null;
+  authorEmail?: string | null;
+  content: string;
+  isInternalNote: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskFile {
+  id: string;
+  taskId: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+  uploaderId: string;
+  uploaderName: string;
+  createdAt: string;
+}
+
+export interface TaskActivity {
+  id: string;
+  taskId: string;
+  actorId: string | null;
+  actorName: string;
+  actorRole?: UserRole | null;
+  action: string;
+  previousState: Record<string, any> | null;
+  newState: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  createdAt: string;
+}
+
+export interface TaskAccessDetail {
+  id: string;
+  taskId: string;
+  userId: string | null;
+  groupId: string | null;
+  permission: TaskPermission;
+  targetName: string;
+  targetEmail?: string | null;
+  isGroup: boolean;
+  grantedByName?: string | null;
+  createdAt: string;
+}
+
+export interface EligibleAssignee {
+  id: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  primaryGroupId: string | null;
+  primaryGroupName: string | null;
+}
+
+export interface TaskWithFullDetails extends TaskWithDetails {
+  comments: TaskComment[];
+  files: TaskFile[];
+  activities: TaskActivity[];
+  collaborators: TaskAccessDetail[];
+  parentTaskDetail?: {
+    id: string;
+    taskCode: string;
+    title: string;
+    status: TaskStatus;
+    canAccess: boolean;
+  } | null;
+  subtasks: Array<{
+    id: string;
+    taskCode: string;
+    title: string;
+    status: TaskStatus;
+    priority: TaskPriority;
+    deadline: string | null;
+    assigneeId: string | null;
+    assigneeName: string | null;
+    canAccess: boolean;
+  }>;
+  eligibleAssignees?: EligibleAssignee[];
+  currentUserRole: UserRole;
+  currentUserId: string;
+  isCurrentAssignee: boolean;
+  isCurrentAssignedHead: boolean;
+  canPerformActions: {
+    canAccept: boolean;
+    canStart: boolean;
+    canSubmitForReview: boolean;
+    canComplete: boolean;
+    canRequestChanges: boolean;
+    canBlock: boolean;
+    canUnblock: boolean;
+    canCancel: boolean;
+    canReassign: boolean;
+    canUpdateParameters: boolean;
+    canManageAccess: boolean;
+    canComment: boolean;
+  };
+}

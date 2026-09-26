@@ -8,6 +8,7 @@ import {
   startTask,
   submitTaskForReview,
   completeTask,
+  requestChanges,
   blockTask,
   unblockTask,
   cancelTask,
@@ -15,6 +16,8 @@ import {
   updateTaskParameters,
   grantTaskAccess,
   revokeTaskAccess,
+  addComment,
+  getEligibleAssignees,
 } from "./service";
 import type {
   TaskRow,
@@ -26,6 +29,8 @@ import type {
   UpdateTaskParametersInput,
   GrantTaskAccessInput,
   TaskPriority,
+  TaskComment,
+  EligibleAssignee,
 } from "./types";
 
 /**
@@ -87,6 +92,9 @@ export async function delegateTaskAction(
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    if (parentTaskId) {
+      revalidatePath(`/workspace/tasks/${parentTaskId}`);
+    }
   }
 
   return result;
@@ -99,6 +107,7 @@ export async function acceptTaskAction(taskId: string): Promise<TaskResult<TaskR
   const result = await acceptTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -110,6 +119,7 @@ export async function startTaskAction(taskId: string): Promise<TaskResult<TaskRo
   const result = await startTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -121,6 +131,7 @@ export async function submitTaskForReviewAction(taskId: string): Promise<TaskRes
   const result = await submitTaskForReview(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -132,6 +143,22 @@ export async function completeTaskAction(taskId: string): Promise<TaskResult<Tas
   const result = await completeTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
+  }
+  return result;
+}
+
+/**
+ * Server Action for Group Head / Main Head to request changes on submitted work.
+ */
+export async function requestChangesAction(
+  taskId: string,
+  feedback?: string
+): Promise<TaskResult<TaskRow>> {
+  const result = await requestChanges(taskId, feedback);
+  if (result.success) {
+    revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -146,6 +173,7 @@ export async function blockTaskAction(
   const result = await blockTask(taskId, reason);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -157,6 +185,7 @@ export async function unblockTaskAction(taskId: string): Promise<TaskResult<Task
   const result = await unblockTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -171,6 +200,7 @@ export async function cancelTaskAction(
   const result = await cancelTask(taskId, reason);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -185,6 +215,7 @@ export async function reassignTaskAction(
   const result = await reassignTask(taskId, input);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -199,6 +230,7 @@ export async function updateTaskParametersAction(
   const result = await updateTaskParameters(taskId, input);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
 }
@@ -212,6 +244,7 @@ export async function grantTaskAccessAction(
   const result = await grantTaskAccess(input);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${input.taskId}`);
   }
   return result;
 }
@@ -219,10 +252,39 @@ export async function grantTaskAccessAction(
 /**
  * Server Action to revoke task access.
  */
-export async function revokeTaskAccessAction(taskAccessId: string): Promise<TaskResult<void>> {
+export async function revokeTaskAccessAction(
+  taskId: string,
+  taskAccessId: string
+): Promise<TaskResult<void>> {
   const result = await revokeTaskAccess(taskAccessId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
+}
+
+/**
+ * Server Action to add a comment to a task.
+ */
+export async function addCommentAction(
+  taskId: string,
+  content: string,
+  isInternalNote: boolean = false
+): Promise<TaskResult<TaskComment>> {
+  const result = await addComment({ taskId, content, isInternalNote });
+  if (result.success) {
+    revalidatePath("/workspace");
+    revalidatePath(`/workspace/tasks/${taskId}`);
+  }
+  return result;
+}
+
+/**
+ * Server Action to fetch eligible assignees for reassigning a task.
+ */
+export async function getEligibleAssigneesAction(
+  taskId: string
+): Promise<TaskResult<EligibleAssignee[]>> {
+  return getEligibleAssignees(taskId);
 }

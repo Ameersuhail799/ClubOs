@@ -22,6 +22,13 @@ import type {
   TaskFilterOptions,
   TaskWithDetails,
   TaskStatus,
+  TaskPriority,
+  TaskComment,
+  TaskFile,
+  TaskActivity,
+  TaskAccessDetail,
+  EligibleAssignee,
+  TaskWithFullDetails,
 } from "./types";
 
 /**
@@ -1385,3 +1392,726 @@ export async function listTasks(filters?: TaskFilterOptions): Promise<TaskResult
 
   return { success: true, data: result };
 }
+
+/**
+ * Evaluates whether a user is authorized to read a task, matching the PostgreSQL
+ * private.can_read_task(task_id) function exactly.
+ * Includes recursive parent boundary check.
+ */
+export async function canUserAccessTask(
+  taskId: string,
+  userId: string,
+  role: UserRole,
+  userGroupId: string | null,
+  organizationId: string
+): Promise<boolean> {
+  const adminClient = createAdminClient();
+
+  // Fetch task
+  const { data: task } = await adminClient
+    .from("tasks")
+    .select("id, organization_id, primary_group_id, parent_task_id, assignee_id, assigned_head_id")
+    .eq("id", taskId)
+    .maybeSingle();
+
+  if (!task || task.organization_id !== organizationId) {
+    return false;
+  }
+
+  // Parent task boundary check: If parent_task_id is set, caller must ALSO be authorized to read parent
+  if (task.parent_task_id) {
+    const parentAllowed = await canUserAccessTask(
+      task.parent_task_id,
+      userId,
+      role,
+      userGroupId,
+      organizationId
+    );
+    if (!parentAllowed) {
+      return false;
+    }
+  }
+
+  // Role authority checks
+  if (role === "main_head") {
+    return true;
+  }
+
+  if (task.primary_group_id && task.primary_group_id === userGroupId) {
+    return true;
+  }
+
+  if (task.assignee_id === userId || task.assigned_head_id === userId) {
+    return true;
+  }
+
+  // Check explicit task_access
+  const { data: explicit } = await adminClient
+    .from("task_access")
+    .select("id")
+    .eq("task_id", taskId)
+    .or(`user_id.eq.${userId},group_id.eq.${userGroupId || "00000000-0000-0000-0000-000000000000"}`)
+    .maybeSingle();
+
+  return Boolean(explicit);
+}
+
+/**
+ * Retrieves full task details for the shared Task Inspector.
+ * Strictly verifies tenant boundary, role visibility, parent task boundaries,
+ * and fetches comments, files, activity records, subtasks, and collaborators.
+ */
+export async function getTaskFullDetails(
+  taskId: string
+): Promise<TaskResult<TaskWithFullDetails>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  const adminClient = createAdminClient();
+
+  // 1. Fetch task in organization
+  const { data: task, error: taskErr } = await adminClient
+    .from("tasks")
+    .select("*, primary_group:groups(id, name, slug)")
+    .eq("id", taskId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (taskErr || !task) {
+    return { error: "Task not found in your organization.", code: "task_not_found" };
+  }
+
+  const role = context.role || "member";
+  const userId = context.user.id;
+  const userGroupId = context.primaryGroup?.id || null;
+
+  // 2. Authorization check (matching RLS private.can_read_task)
+  const isAuthorized = await canUserAccessTask(
+    taskId,
+    userId,
+    role,
+    userGroupId,
+    organizationId
+  );
+
+  if (!isAuthorized) {
+    return { error: "Access Denied: You do not have permission to view this task.", code: "forbidden" };
+  }
+
+  // 3. Concurrently fetch related records for performance
+  const [
+    rawCommentsRes,
+    rawFilesRes,
+    rawActivitiesRes,
+    rawChildrenRes,
+    rawAccessRes,
+  ] = await Promise.all([
+    adminClient
+      .from("comments")
+      .select("*")
+      .eq("task_id", taskId)
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: true }),
+    adminClient
+      .from("file_metadata")
+      .select("*")
+      .eq("task_id", taskId)
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false }),
+    adminClient
+      .from("activity_records")
+      .select("*")
+      .eq("task_id", taskId)
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false }),
+    adminClient
+      .from("tasks")
+      .select("*")
+      .eq("parent_task_id", taskId)
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: true }),
+    adminClient
+      .from("task_access")
+      .select("*")
+      .eq("task_id", taskId)
+      .eq("organization_id", organizationId),
+  ]);
+
+  const rawComments = rawCommentsRes.data || [];
+  const rawFiles = rawFilesRes.data || [];
+  const rawActivities = rawActivitiesRes.data || [];
+  const rawChildren = rawChildrenRes.data || [];
+  const rawAccess = rawAccessRes.data || [];
+
+  // 4. Collect user IDs to batch fetch profiles & member roles
+  const userIdsToFetch = Array.from(
+    new Set(
+      [
+        task.created_by,
+        task.assigned_head_id,
+        task.assignee_id,
+        ...rawComments.map((c) => c.author_id),
+        ...rawFiles.map((f) => f.uploader_id),
+        ...rawActivities.map((a) => a.actor_id),
+        ...rawAccess.map((ta) => ta.user_id),
+        ...rawAccess.map((ta) => ta.granted_by),
+        ...rawChildren.map((ch) => ch.assignee_id),
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  const profileMap = new Map<string, { id: string; fullName: string; email: string; avatarUrl: string | null }>();
+  if (userIdsToFetch.length > 0) {
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("id, full_name, email, avatar_url")
+      .in("id", userIdsToFetch);
+
+    if (profiles) {
+      for (const p of profiles) {
+        profileMap.set(p.id, {
+          id: p.id,
+          fullName: p.full_name,
+          email: p.email,
+          avatarUrl: p.avatar_url,
+        });
+      }
+    }
+  }
+
+  const memberRoleMap = new Map<string, UserRole>();
+  if (userIdsToFetch.length > 0) {
+    const { data: orgMembers } = await adminClient
+      .from("organization_members")
+      .select("user_id, role")
+      .eq("organization_id", organizationId)
+      .in("user_id", userIdsToFetch);
+
+    if (orgMembers) {
+      for (const m of orgMembers) {
+        memberRoleMap.set(m.user_id, m.role);
+      }
+    }
+  }
+
+  // Group map for task_access target groups
+  const groupIdsToFetch = Array.from(
+    new Set(
+      [
+        task.primary_group_id,
+        ...rawAccess.map((ta) => ta.group_id),
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  const groupMap = new Map<string, { id: string; name: string; slug: string }>();
+  if (groupIdsToFetch.length > 0) {
+    const { data: groups } = await adminClient
+      .from("groups")
+      .select("id, name, slug")
+      .in("id", groupIdsToFetch);
+
+    if (groups) {
+      for (const g of groups) {
+        groupMap.set(g.id, g);
+      }
+    }
+  }
+
+  // 5. Parent Task Resolution
+  let parentTaskDetail = null;
+  if (task.parent_task_id) {
+    const { data: parent } = await adminClient
+      .from("tasks")
+      .select("id, task_code, title, status, organization_id")
+      .eq("id", task.parent_task_id)
+      .maybeSingle();
+
+    if (parent && parent.organization_id === organizationId) {
+      const parentCanAccess = await canUserAccessTask(
+        parent.id,
+        userId,
+        role,
+        userGroupId,
+        organizationId
+      );
+      if (parentCanAccess) {
+        parentTaskDetail = {
+          id: parent.id,
+          taskCode: parent.task_code,
+          title: parent.title,
+          status: parent.status,
+          canAccess: true,
+        };
+      }
+    }
+  }
+
+  // 6. Subtasks with access check
+  const subtasks = [];
+  for (const child of rawChildren) {
+    const canChildAccess = await canUserAccessTask(
+      child.id,
+      userId,
+      role,
+      userGroupId,
+      organizationId
+    );
+    if (canChildAccess) {
+      const assigneeProf = child.assignee_id ? profileMap.get(child.assignee_id) : null;
+      subtasks.push({
+        id: child.id,
+        taskCode: child.task_code,
+        title: child.title,
+        status: child.status,
+        priority: child.priority,
+        deadline: child.deadline,
+        assigneeId: child.assignee_id,
+        assigneeName: assigneeProf?.fullName || null,
+        canAccess: true,
+      });
+    }
+  }
+
+  // 7. Comments
+  const comments: TaskComment[] = [];
+  for (const c of rawComments) {
+    if (role === "member" && c.is_internal_note) {
+      continue; // Filter internal head notes for regular members
+    }
+    const authorProf = profileMap.get(c.author_id);
+    comments.push({
+      id: c.id,
+      taskId: c.task_id,
+      organizationId: c.organization_id,
+      authorId: c.author_id,
+      authorName: authorProf?.fullName || "ClubOS Contributor",
+      authorRole: memberRoleMap.get(c.author_id) || "member",
+      authorEmail: authorProf?.email || null,
+      content: c.content,
+      isInternalNote: c.is_internal_note,
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+    });
+  }
+
+  // 8. Files
+  const files: TaskFile[] = rawFiles.map((f) => {
+    const uploaderProf = profileMap.get(f.uploader_id);
+    return {
+      id: f.id,
+      taskId: f.task_id || task.id,
+      fileName: f.file_name,
+      filePath: f.file_path,
+      fileSize: Number(f.file_size) || 0,
+      mimeType: f.mime_type,
+      uploaderId: f.uploader_id,
+      uploaderName: uploaderProf?.fullName || "Unknown",
+      createdAt: f.created_at,
+    };
+  });
+
+  // 9. Activities
+  const activities: TaskActivity[] = rawActivities.map((a) => {
+    const actorProf = a.actor_id ? profileMap.get(a.actor_id) : null;
+    return {
+      id: a.id,
+      taskId: a.task_id || task.id,
+      actorId: a.actor_id,
+      actorName: actorProf?.fullName || "System Engine",
+      actorRole: a.actor_id ? memberRoleMap.get(a.actor_id) || null : null,
+      action: a.action,
+      previousState: (a.previous_state as Record<string, any>) || null,
+      newState: (a.new_state as Record<string, any>) || null,
+      metadata: (a.metadata as Record<string, any>) || null,
+      createdAt: a.created_at,
+    };
+  });
+
+  // 10. Collaborators (task_access)
+  const collaborators: TaskAccessDetail[] = rawAccess.map((ta) => {
+    const targetProf = ta.user_id ? profileMap.get(ta.user_id) : null;
+    const targetGrp = ta.group_id ? groupMap.get(ta.group_id) : null;
+    const granterProf = profileMap.get(ta.granted_by);
+    return {
+      id: ta.id,
+      taskId: ta.task_id,
+      userId: ta.user_id,
+      groupId: ta.group_id,
+      permission: ta.permission,
+      targetName: ta.user_id ? (targetProf?.fullName || "User") : (targetGrp?.name || "Group"),
+      targetEmail: targetProf?.email || null,
+      isGroup: Boolean(ta.group_id),
+      grantedByName: granterProf?.fullName || null,
+      createdAt: ta.created_at,
+    };
+  });
+
+  // 11. Eligible Assignees (for Heads reassigning)
+  let eligibleAssignees: EligibleAssignee[] = [];
+  if (role === "main_head" || role === "group_head") {
+    let memberQuery = adminClient
+      .from("organization_members")
+      .select("id, user_id, role, primary_group_id, groups(id, name, slug), profiles!inner(id, full_name, email)")
+      .eq("organization_id", organizationId)
+      .eq("status", "active");
+
+    if (role === "group_head") {
+      memberQuery = memberQuery.eq("primary_group_id", task.primary_group_id);
+    }
+
+    const { data: activeMems } = await memberQuery;
+    if (activeMems) {
+      eligibleAssignees = activeMems.map((m: any) => ({
+        id: m.id,
+        userId: m.user_id,
+        fullName: m.profiles?.full_name || "Unknown",
+        email: m.profiles?.email || "",
+        role: m.role,
+        primaryGroupId: m.primary_group_id,
+        primaryGroupName: m.groups?.name || null,
+      }));
+    }
+  }
+
+  // 12. Permissions calculation
+  const isCurrentAssignee = task.assignee_id === userId;
+  const isCurrentAssignedHead = task.assigned_head_id === userId;
+  const isOwnGroup = task.primary_group_id === userGroupId;
+  const isTerminal = task.status === "completed" || task.status === "cancelled";
+
+  const canPerformActions = {
+    canAccept: !isTerminal && task.status === "assigned" && (
+      role === "main_head" ||
+      (role === "group_head" && (isCurrentAssignedHead || (isOwnGroup && !task.assigned_head_id))) ||
+      (role === "member" && isCurrentAssignee && !task.assigned_head_id)
+    ),
+    canStart: !isTerminal && (task.status === "accepted" || task.status === "assigned") && (
+      role === "main_head" ||
+      (role === "group_head" && (isCurrentAssignedHead || isOwnGroup)) ||
+      (role === "member" && isCurrentAssignee)
+    ),
+    canSubmitForReview: !isTerminal && task.status === "in_progress" && (
+      role === "main_head" ||
+      isCurrentAssignee ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canComplete: !isTerminal && (task.status === "ready_for_review" || task.status === "in_progress") && (
+      role === "main_head" ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canRequestChanges: !isTerminal && task.status === "ready_for_review" && (
+      role === "main_head" ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canBlock: !isTerminal && task.status === "in_progress" && (
+      role === "main_head" ||
+      isCurrentAssignee ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canUnblock: !isTerminal && task.status === "blocked" && (
+      role === "main_head" ||
+      isCurrentAssignee ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canCancel: !isTerminal && (
+      role === "main_head" ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canReassign: !isTerminal && (
+      role === "main_head" ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canUpdateParameters: !isTerminal && (
+      role === "main_head" ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canManageAccess: (
+      role === "main_head" ||
+      (role === "group_head" && isOwnGroup)
+    ),
+    canComment: true,
+  };
+
+  const creatorProf = task.created_by ? profileMap.get(task.created_by) : null;
+  const assignedHeadProf = task.assigned_head_id ? profileMap.get(task.assigned_head_id) : null;
+  const assigneeProf = task.assignee_id ? profileMap.get(task.assignee_id) : null;
+
+  return {
+    success: true,
+    data: {
+      ...task,
+      primaryGroup: task.primary_group as any,
+      creatorProfile: creatorProf || null,
+      assignedHeadProfile: assignedHeadProf || null,
+      assigneeProfile: assigneeProf || null,
+      parentTaskDetail,
+      childTasks: rawChildren,
+      subtasks,
+      comments,
+      files,
+      activities,
+      collaborators,
+      eligibleAssignees,
+      currentUserRole: role,
+      currentUserId: userId,
+      isCurrentAssignee,
+      isCurrentAssignedHead,
+      canPerformActions,
+    },
+  };
+}
+
+/**
+ * Adds a new comment to a task.
+ * Strictly verifies caller has authorization to view and comment on the task.
+ */
+export async function addComment({
+  taskId,
+  content,
+  isInternalNote = false,
+}: {
+  taskId: string;
+  content: string;
+  isInternalNote?: boolean;
+}): Promise<TaskResult<TaskComment>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  const trimmedContent = content?.trim();
+  if (!trimmedContent) {
+    return { error: "Comment content cannot be empty.", code: "forbidden" };
+  }
+
+  if (trimmedContent.length > 5000) {
+    return { error: "Comment content exceeds maximum allowed length of 5000 characters.", code: "forbidden" };
+  }
+
+  const role = context.role || "member";
+  const userId = context.user.id;
+  const userGroupId = context.primaryGroup?.id || null;
+
+  // Authorization check (matching RLS can_read_task)
+  const isAuthorized = await canUserAccessTask(
+    taskId,
+    userId,
+    role,
+    userGroupId,
+    organizationId
+  );
+
+  if (!isAuthorized) {
+    return { error: "Access Denied: You do not have permission to comment on this task.", code: "forbidden" };
+  }
+
+  // Only heads may post internal notes
+  const effectiveInternalNote = Boolean(isInternalNote && (role === "main_head" || role === "group_head"));
+
+  const adminClient = createAdminClient();
+
+  const { data: newComment, error: insertErr } = await adminClient
+    .from("comments")
+    .insert({
+      organization_id: organizationId,
+      task_id: taskId,
+      author_id: userId,
+      content: trimmedContent,
+      is_internal_note: effectiveInternalNote,
+    })
+    .select("*")
+    .single();
+
+  if (insertErr || !newComment) {
+    return { error: `Failed to post comment: ${insertErr?.message}`, code: "internal_error" };
+  }
+
+  await recordTaskAudit({
+    organizationId,
+    actorId: userId,
+    taskId,
+    action: "task_comment_added",
+    metadata: {
+      comment_id: newComment.id,
+      is_internal_note: effectiveInternalNote,
+    },
+  });
+
+  return {
+    success: true,
+    data: {
+      id: newComment.id,
+      taskId: newComment.task_id,
+      organizationId: newComment.organization_id,
+      authorId: newComment.author_id,
+      authorName: context.profile?.full_name || context.user.email || "Unknown",
+      authorRole: role,
+      authorEmail: context.user.email || null,
+      content: newComment.content,
+      isInternalNote: newComment.is_internal_note,
+      createdAt: newComment.created_at,
+      updatedAt: newComment.updated_at,
+    },
+  };
+}
+
+/**
+ * Requests changes on a task that has been submitted for review.
+ * Moves task from ready_for_review back to in_progress.
+ * Only Group Heads or Main Heads can request changes.
+ */
+export async function requestChanges(
+  taskId: string,
+  feedback?: string
+): Promise<TaskResult<TaskRow>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  if (context.role === "member") {
+    return { error: "Members cannot request changes on tasks.", code: "forbidden" };
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: task, error } = await adminClient
+    .from("tasks")
+    .select("*")
+    .eq("id", taskId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (error || !task) {
+    return { error: "Task not found in your organization.", code: "task_not_found" };
+  }
+
+  if (context.role === "group_head" && task.primary_group_id !== context.primaryGroup?.id) {
+    return { error: "Group Heads can only review tasks within their own primary group.", code: "forbidden" };
+  }
+
+  if (task.status !== "ready_for_review") {
+    return {
+      error: `Cannot request changes on a task with status '${task.status}'. Task must be 'ready_for_review'.`,
+      code: "invalid_transition",
+    };
+  }
+
+  const { data: updatedTask, error: updateErr } = await adminClient
+    .from("tasks")
+    .update({ status: "in_progress", updated_at: new Date().toISOString() })
+    .eq("id", taskId)
+    .select("*")
+    .single();
+
+  if (updateErr || !updatedTask) {
+    return { error: `Failed to request changes: ${updateErr?.message}`, code: "internal_error" };
+  }
+
+  await recordTaskAudit({
+    organizationId,
+    actorId: context.user.id,
+    taskId,
+    action: "task_reviewed",
+    previousState: { status: "ready_for_review" },
+    newState: { status: "in_progress" },
+    metadata: { result: "changes_requested", feedback: feedback?.trim() || null },
+  });
+
+  if (feedback && feedback.trim().length > 0) {
+    await adminClient.from("comments").insert({
+      organization_id: organizationId,
+      task_id: taskId,
+      author_id: context.user.id,
+      content: `[Changes Requested]: ${feedback.trim()}`,
+      is_internal_note: false,
+    });
+  }
+
+  return { success: true, data: updatedTask };
+}
+
+/**
+ * Retrieves eligible assignees for reassigning a task.
+ */
+export async function getEligibleAssignees(
+  taskId: string
+): Promise<TaskResult<EligibleAssignee[]>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: task } = await adminClient
+    .from("tasks")
+    .select("id, organization_id, primary_group_id")
+    .eq("id", taskId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (!task) {
+    return { error: "Task not found.", code: "task_not_found" };
+  }
+
+  const role = context.role || "member";
+  if (role === "member") {
+    return { success: true, data: [] };
+  }
+
+  let memberQuery = adminClient
+    .from("organization_members")
+    .select("id, user_id, role, primary_group_id, groups(id, name, slug), profiles!inner(id, full_name, email)")
+    .eq("organization_id", organizationId)
+    .eq("status", "active");
+
+  if (role === "group_head") {
+    memberQuery = memberQuery.eq("primary_group_id", task.primary_group_id);
+  }
+
+  const { data: members, error: memErr } = await memberQuery;
+  if (memErr || !members) {
+    return { error: `Failed to fetch eligible assignees: ${memErr?.message}`, code: "internal_error" };
+  }
+
+  const eligible: EligibleAssignee[] = members.map((m: any) => ({
+    id: m.id,
+    userId: m.user_id,
+    fullName: m.profiles?.full_name || "Unknown",
+    email: m.profiles?.email || "",
+    role: m.role,
+    primaryGroupId: m.primary_group_id,
+    primaryGroupName: m.groups?.name || null,
+  }));
+
+  return { success: true, data: eligible };
+}
+
