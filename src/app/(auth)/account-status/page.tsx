@@ -30,7 +30,25 @@ export default function AccountStatusPage() {
       badge: "No Membership",
       title: "Organization Not Found",
       description:
-        "Your authenticated account is not associated with an active ClubOS organization. ClubOS is strictly invitation-only; please ensure you used your institutional invitation token.",
+        "Your authenticated account is not associated with an active ClubOS organization. ClubOS is strictly invitation-only; please ensure you used your institutional invitation link.",
+    },
+    invalid_invitation: {
+      badge: "Invalid Token",
+      title: "Invitation Not Found",
+      description:
+        "No matching institutional invitation could be found for your account. Please verify that you opened the link sent to your registered email.",
+    },
+    revoked_invitation: {
+      badge: "Access Revoked",
+      title: "Invitation Revoked",
+      description:
+        "This institutional invitation was revoked by your Main Head before activation. Please contact your organization administrator.",
+    },
+    expired_invitation: {
+      badge: "Link Expired",
+      title: "Invitation Expired",
+      description:
+        "This invitation link has expired (invitations remain valid for 7 days). Please contact your Main Head to re-issue an invitation.",
     },
   };
 

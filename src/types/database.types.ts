@@ -351,11 +351,12 @@ export type Database = {
           expires_at: string
           id: string
           invited_by: string
+          invited_user_id: string | null
           organization_id: string
           primary_group_id: string
           role: Database["public"]["Enums"]["user_role"]
           status: Database["public"]["Enums"]["invitation_status"]
-          token: string
+          token: string | null
           updated_at: string
         }
         Insert: {
@@ -365,11 +366,12 @@ export type Database = {
           expires_at: string
           id?: string
           invited_by: string
+          invited_user_id?: string | null
           organization_id: string
           primary_group_id: string
           role: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["invitation_status"]
-          token: string
+          token?: string | null
           updated_at?: string
         }
         Update: {
@@ -379,11 +381,12 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string
+          invited_user_id?: string | null
           organization_id?: string
           primary_group_id?: string
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["invitation_status"]
-          token?: string
+          token?: string | null
           updated_at?: string
         }
         Relationships: [
