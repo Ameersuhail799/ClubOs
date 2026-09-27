@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/Button";
 import { MemberTaskRow } from "./MemberTaskRow";
 import { PersonalTodoCard } from "./PersonalTodoCard";
 import { WhatChangedLedger } from "./WhatChangedLedger";
@@ -176,6 +178,12 @@ export function MemberWorkbenchContent({
                 Todo ({todos.length})
               </button>
             </div>
+
+            <Link href="/workspace/tasks">
+              <Button variant="outline" size="sm">
+                Workboard
+              </Button>
+            </Link>
           </div>
         </div>
 

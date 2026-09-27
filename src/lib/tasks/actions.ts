@@ -23,6 +23,7 @@ import {
   getOrganizationDirectives,
   getGroupWorkspaceData,
   getMemberWorkbenchData,
+  getWorkboardData,
 } from "./service";
 import type {
   TaskRow,
@@ -34,12 +35,15 @@ import type {
   UpdateTaskParametersInput,
   GrantTaskAccessInput,
   TaskPriority,
+  TaskStatus,
   TaskComment,
   EligibleAssignee,
   EligibleGroupHead,
   TaskWithDetails,
   GroupWorkspaceData,
   MemberWorkbenchData,
+  WorkboardData,
+  WorkboardFilterOptions,
 } from "./types";
 
 /**
@@ -165,6 +169,7 @@ export async function acceptTaskAction(taskId: string): Promise<TaskResult<TaskR
   const result = await acceptTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -180,6 +185,7 @@ export async function startTaskAction(taskId: string): Promise<TaskResult<TaskRo
   const result = await startTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -195,6 +201,7 @@ export async function submitTaskForReviewAction(taskId: string): Promise<TaskRes
   const result = await submitTaskForReview(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -210,6 +217,7 @@ export async function completeTaskAction(taskId: string): Promise<TaskResult<Tas
   const result = await completeTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -228,6 +236,7 @@ export async function requestChangesAction(
   const result = await requestChanges(taskId, feedback);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -246,6 +255,7 @@ export async function blockTaskAction(
   const result = await blockTask(taskId, reason);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -261,6 +271,7 @@ export async function unblockTaskAction(taskId: string): Promise<TaskResult<Task
   const result = await unblockTask(taskId);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath("/workspace/my-day");
     revalidatePath("/workspace/my-tasks");
@@ -279,6 +290,7 @@ export async function cancelTaskAction(
   const result = await cancelTask(taskId, reason);
   if (result.success) {
     revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
     revalidatePath("/workspace/group");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
@@ -367,4 +379,72 @@ export async function getEligibleAssigneesAction(
   taskId: string
 ): Promise<TaskResult<EligibleAssignee[]>> {
   return getEligibleAssignees(taskId);
+}
+
+/**
+ * Server Action to retrieve authoritative workboard dataset.
+ */
+export async function getWorkboardDataAction(
+  filters?: WorkboardFilterOptions
+): Promise<TaskResult<WorkboardData>> {
+  return getWorkboardData(filters);
+}
+
+/**
+ * Server Action to transition a task to a target workflow status from the workboard.
+ * Reuses existing authoritative domain services and guarantees audit recording.
+ */
+export async function transitionTaskWorkboardAction(
+  taskId: string,
+  targetStatus: TaskStatus,
+  noteOrReason?: string
+): Promise<TaskResult<TaskRow>> {
+  let result: TaskResult<TaskRow>;
+
+  switch (targetStatus) {
+    case "accepted":
+      result = await acceptTask(taskId);
+      break;
+    case "in_progress":
+      if (noteOrReason === "__unblock__") {
+        result = await unblockTask(taskId);
+      } else if (noteOrReason) {
+        result = await requestChanges(taskId, noteOrReason);
+      } else {
+        result = await startTask(taskId);
+        if (!result.success && result.code === "invalid_transition") {
+          const unblockRes = await unblockTask(taskId);
+          if (unblockRes.success) result = unblockRes;
+        }
+      }
+      break;
+    case "ready_for_review":
+      result = await submitTaskForReview(taskId);
+      break;
+    case "completed":
+      result = await completeTask(taskId);
+      break;
+    case "blocked":
+      result = await blockTask(taskId, noteOrReason || "Work blocked");
+      break;
+    case "cancelled":
+      result = await cancelTask(taskId, noteOrReason);
+      break;
+    default:
+      return {
+        error: `Target workflow status '${targetStatus}' is not supported for direct movement.`,
+        code: "invalid_transition",
+      };
+  }
+
+  if (result.success) {
+    revalidatePath("/workspace");
+    revalidatePath("/workspace/tasks");
+    revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
+    revalidatePath(`/workspace/tasks/${taskId}`);
+  }
+
+  return result;
 }

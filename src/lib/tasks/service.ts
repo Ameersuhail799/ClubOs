@@ -35,6 +35,9 @@ import type {
   GroupMemberWorkload,
   MemberWorkbenchData,
   MemberActivityItem,
+  WorkboardTask,
+  WorkboardFilterOptions,
+  WorkboardData,
 } from "./types";
 import type { PersonalTodoWithTask } from "@/lib/todos/types";
 
@@ -2930,6 +2933,420 @@ export async function getMemberWorkbenchData(): Promise<TaskResult<MemberWorkben
       },
       todos: personalTodos,
       recentActivity: recentActivities,
+    },
+  };
+}
+
+/**
+ * Loads the authoritative workboard dataset for the current user according to their role.
+ * Main Head: Organization-wide authorized task view.
+ * Group Head: Only primary group's authorized tasks + explicitly granted task-level access.
+ * Member: Only tasks assigned to them, created by them, or explicitly granted.
+ */
+export async function getWorkboardData(
+  filters?: WorkboardFilterOptions
+): Promise<TaskResult<WorkboardData>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  const adminClient = createAdminClient();
+  const userId = context.user.id;
+  const userRole: UserRole = context.role || "member";
+  const userGroupId = context.primaryGroup?.id || null;
+
+  // 1. Fetch organization groups for group metadata and filtering
+  const { data: orgGroups, error: groupErr } = await adminClient
+    .from("groups")
+    .select("id, name, slug")
+    .eq("organization_id", organizationId)
+    .order("name", { ascending: true });
+
+  if (groupErr) {
+    return { error: `Failed to load groups: ${groupErr.message}`, code: "internal_error" };
+  }
+
+  const allGroups = orgGroups || [];
+  const groupMap = new Map(allGroups.map((g) => [g.id, g]));
+
+  // Groups exposed to client based on role
+  let visibleGroups: Array<{ id: string; name: string; slug: string }> = [];
+  if (userRole === "main_head") {
+    visibleGroups = allGroups;
+  } else if (userRole === "group_head" && context.primaryGroup) {
+    visibleGroups = allGroups.filter((g) => g.id === userGroupId);
+  } else if (userRole === "member" && context.primaryGroup) {
+    visibleGroups = allGroups.filter((g) => g.id === userGroupId);
+  }
+
+  // 2. Fetch explicit task access grants for caller
+  const { data: explicitAccessRows } = await adminClient
+    .from("task_access")
+    .select("task_id")
+    .eq("user_id", userId);
+
+  const explicitTaskIds = Array.from(
+    new Set((explicitAccessRows || []).map((r) => r.task_id).filter(Boolean))
+  );
+
+  // 3. Build role-authoritative base query
+  let query = adminClient
+    .from("tasks")
+    .select("*")
+    .eq("organization_id", organizationId);
+
+  if (userRole === "main_head") {
+    // Main Head: sees all tasks in the organization
+    if (filters?.groupId && filters.groupId !== "all") {
+      if (groupMap.has(filters.groupId)) {
+        query = query.eq("primary_group_id", filters.groupId);
+      } else {
+        // Requested group does not exist in this organization
+        return {
+          success: true,
+          data: {
+            tasks: [],
+            groups: visibleGroups,
+            currentUser: { id: userId, role: userRole, primaryGroupId: userGroupId },
+            countsByStatus: {
+              draft: 0,
+              assigned: 0,
+              accepted: 0,
+              in_progress: 0,
+              ready_for_review: 0,
+              completed: 0,
+              blocked: 0,
+              cancelled: 0,
+            },
+          },
+        };
+      }
+    }
+
+    if (filters?.scope === "my_work") {
+      query = query.or(
+        `created_by.eq.${userId},assigned_head_id.eq.${userId},assignee_id.eq.${userId}`
+      );
+    }
+  } else if (userRole === "group_head") {
+    // Group Head: only their primary group's tasks + explicit task_access
+    if (!userGroupId && explicitTaskIds.length === 0) {
+      return {
+        success: true,
+        data: {
+          tasks: [],
+          groups: visibleGroups,
+          currentUser: { id: userId, role: userRole, primaryGroupId: userGroupId },
+          countsByStatus: {
+            draft: 0,
+            assigned: 0,
+            accepted: 0,
+            in_progress: 0,
+            ready_for_review: 0,
+            completed: 0,
+            blocked: 0,
+            cancelled: 0,
+          },
+        },
+      };
+    }
+
+    // If caller filtered by groupId and it's not their own group, return empty
+    if (filters?.groupId && filters.groupId !== "all" && filters.groupId !== userGroupId) {
+      return {
+        success: true,
+        data: {
+          tasks: [],
+          groups: visibleGroups,
+          currentUser: { id: userId, role: userRole, primaryGroupId: userGroupId },
+          countsByStatus: {
+            draft: 0,
+            assigned: 0,
+            accepted: 0,
+            in_progress: 0,
+            ready_for_review: 0,
+            completed: 0,
+            blocked: 0,
+            cancelled: 0,
+          },
+        },
+      };
+    }
+
+    if (userGroupId && explicitTaskIds.length > 0) {
+      query = query.or(`primary_group_id.eq.${userGroupId},id.in.(${explicitTaskIds.join(",")})`);
+    } else if (userGroupId) {
+      query = query.eq("primary_group_id", userGroupId);
+    } else {
+      query = query.in("id", explicitTaskIds);
+    }
+
+    if (filters?.scope === "my_work") {
+      query = query.or(
+        `assigned_head_id.eq.${userId},assignee_id.eq.${userId},created_by.eq.${userId}`
+      );
+    }
+  } else {
+    // Member: only assigned, created by, or explicitly granted tasks
+    let memberConditions = `assignee_id.eq.${userId},created_by.eq.${userId}`;
+    if (explicitTaskIds.length > 0) {
+      memberConditions += `,id.in.(${explicitTaskIds.join(",")})`;
+    }
+    query = query.or(memberConditions);
+
+    if (filters?.groupId && filters.groupId !== "all") {
+      if (userGroupId && filters.groupId === userGroupId) {
+        query = query.eq("primary_group_id", filters.groupId);
+      } else {
+        return {
+          success: true,
+          data: {
+            tasks: [],
+            groups: visibleGroups,
+            currentUser: { id: userId, role: userRole, primaryGroupId: userGroupId },
+            countsByStatus: {
+              draft: 0,
+              assigned: 0,
+              accepted: 0,
+              in_progress: 0,
+              ready_for_review: 0,
+              completed: 0,
+              blocked: 0,
+              cancelled: 0,
+            },
+          },
+        };
+      }
+    }
+  }
+
+  // 4. Apply status and priority filters
+  if (filters?.priority && filters.priority !== "all") {
+    query = query.eq("priority", filters.priority);
+  }
+
+  if (filters?.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+
+  // Order chronologically by newest
+  query = query.order("created_at", { ascending: false });
+
+  const { data: rawTasks, error: taskErr } = await query;
+  if (taskErr || !rawTasks) {
+    return { error: `Failed to load workboard tasks: ${taskErr?.message}`, code: "internal_error" };
+  }
+
+  // 5. In-memory search filter (title, code, description)
+  let tasks = rawTasks;
+  if (filters?.search && filters.search.trim()) {
+    const q = filters.search.trim().toLowerCase();
+    tasks = tasks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.task_code.toLowerCase().includes(q) ||
+        (t.description && t.description.toLowerCase().includes(q))
+    );
+  }
+
+  // 6. Subtask progress calculation (only counting authorized subtasks)
+  const taskIds = tasks.map((t) => t.id);
+  const subtaskCountMap = new Map<string, { total: number; completed: number }>();
+
+  if (taskIds.length > 0) {
+    const { data: childRows } = await adminClient
+      .from("tasks")
+      .select("id, parent_task_id, status, assignee_id, primary_group_id")
+      .eq("organization_id", organizationId)
+      .in("parent_task_id", taskIds);
+
+    if (childRows && childRows.length > 0) {
+      for (const child of childRows) {
+        if (!child.parent_task_id) continue;
+
+        // Verify subtask authorization boundary
+        let isAuthorized = false;
+        if (userRole === "main_head") {
+          isAuthorized = true;
+        } else if (userRole === "group_head") {
+          isAuthorized =
+            child.primary_group_id === userGroupId ||
+            child.assignee_id === userId ||
+            explicitTaskIds.includes(child.id);
+        } else {
+          isAuthorized =
+            child.assignee_id === userId || explicitTaskIds.includes(child.id);
+        }
+
+        if (!isAuthorized) continue;
+
+        const current = subtaskCountMap.get(child.parent_task_id) || { total: 0, completed: 0 };
+        current.total += 1;
+        if (child.status === "completed") {
+          current.completed += 1;
+        }
+        subtaskCountMap.set(child.parent_task_id, current);
+      }
+    }
+  }
+
+  // 7. Batch-load profiles for assignees and group heads
+  const userIdsToFetch = Array.from(
+    new Set(
+      [
+        ...tasks.map((t) => t.assignee_id),
+        ...tasks.map((t) => t.assigned_head_id),
+        ...tasks.map((t) => t.created_by),
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  const profileMap = new Map<string, string>();
+  if (userIdsToFetch.length > 0) {
+    const { data: profileRows } = await adminClient
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", userIdsToFetch);
+
+    if (profileRows) {
+      for (const p of profileRows) {
+        profileMap.set(p.id, p.full_name || p.email || "Member");
+      }
+    }
+  }
+
+  // 8. Transform tasks and evaluate action permissions
+  const countsByStatus: Record<TaskStatus, number> = {
+    draft: 0,
+    assigned: 0,
+    accepted: 0,
+    in_progress: 0,
+    ready_for_review: 0,
+    completed: 0,
+    blocked: 0,
+    cancelled: 0,
+  };
+
+  const workboardTasks: WorkboardTask[] = tasks.map((task) => {
+    // Record status counts
+    if (countsByStatus[task.status] !== undefined) {
+      countsByStatus[task.status]++;
+    }
+
+    const authContext: TransitionAuthContext = {
+      userId,
+      role: userRole,
+      primaryGroupId: userGroupId,
+      task: {
+        id: task.id,
+        organization_id: task.organization_id,
+        primary_group_id: task.primary_group_id,
+        assigned_head_id: task.assigned_head_id,
+        assignee_id: task.assignee_id,
+        status: task.status,
+        parent_task_id: task.parent_task_id,
+      },
+    };
+
+    const isGroupHead = userRole === "group_head";
+    const isMainHead = userRole === "main_head";
+    const isMember = userRole === "member";
+    const isAssignedHead = task.assigned_head_id === userId;
+    const isAssignee = task.assignee_id === userId;
+    const isOwnGroup = userGroupId === task.primary_group_id;
+
+    // Evaluated strictly via authoritative state machine
+    const canAccept =
+      task.status === "assigned" &&
+      validateStatusTransition("accepted", authContext).allowed;
+
+    const canStart =
+      (task.status === "assigned" || task.status === "accepted") &&
+      validateStatusTransition("in_progress", authContext).allowed;
+
+    const canSubmitForReview =
+      task.status === "in_progress" &&
+      validateStatusTransition("ready_for_review", authContext).allowed;
+
+    // CRITICAL: Anti-self-approval - member cannot complete
+    const canComplete =
+      !isMember &&
+      validateStatusTransition("completed", authContext).allowed &&
+      (task.status === "ready_for_review" ||
+        ((isMainHead || (isGroupHead && isOwnGroup)) &&
+          (task.status === "in_progress" || task.status === "accepted")));
+
+    const canRequestChanges =
+      task.status === "ready_for_review" &&
+      (isMainHead || (isGroupHead && (isAssignedHead || isOwnGroup)));
+
+    const canBlock =
+      task.status === "in_progress" &&
+      validateStatusTransition("blocked", authContext).allowed;
+
+    const canUnblock =
+      task.status === "blocked" &&
+      validateStatusTransition("in_progress", authContext).allowed;
+
+    const canCancel =
+      task.status !== "completed" &&
+      task.status !== "cancelled" &&
+      validateStatusTransition("cancelled", authContext).allowed;
+
+    const primaryGroupInfo = groupMap.get(task.primary_group_id);
+
+    return {
+      id: task.id,
+      taskCode: task.task_code,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      deadline: task.deadline,
+      primaryGroupId: task.primary_group_id,
+      primaryGroupName: primaryGroupInfo?.name || "General",
+      assignedHeadId: task.assigned_head_id,
+      assignedHeadName: task.assigned_head_id
+        ? profileMap.get(task.assigned_head_id) || "Group Head"
+        : null,
+      assigneeId: task.assignee_id,
+      assigneeName: task.assignee_id
+        ? profileMap.get(task.assignee_id) || "Assignee"
+        : null,
+      subtaskCount: subtaskCountMap.get(task.id) || { total: 0, completed: 0 },
+      parentTaskId: task.parent_task_id,
+      createdAt: task.created_at,
+      canPerformActions: {
+        canAccept,
+        canStart,
+        canSubmitForReview,
+        canComplete,
+        canRequestChanges,
+        canBlock,
+        canUnblock,
+        canCancel,
+      },
+    };
+  });
+
+  return {
+    success: true,
+    data: {
+      tasks: workboardTasks,
+      groups: visibleGroups,
+      currentUser: {
+        id: userId,
+        role: userRole,
+        primaryGroupId: userGroupId,
+      },
+      countsByStatus,
     },
   };
 }

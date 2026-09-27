@@ -214,6 +214,11 @@ export function GroupWorkspaceContent({ initialData }: GroupWorkspaceContentProp
           </div>
 
           <div className="flex items-center gap-3">
+            <Link href="/workspace/tasks">
+              <Button variant="outline" size="md">
+                Workboard
+              </Button>
+            </Link>
             <Button
               variant="primary"
               size="md"

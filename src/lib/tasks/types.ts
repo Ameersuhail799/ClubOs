@@ -279,3 +279,52 @@ export interface MemberWorkbenchData {
   recentActivity: MemberActivityItem[];
 }
 
+export interface WorkboardTask {
+  id: string;
+  taskCode: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  deadline: string | null;
+  primaryGroupId: string;
+  primaryGroupName: string;
+  assignedHeadId: string | null;
+  assignedHeadName: string | null;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  subtaskCount: { total: number; completed: number };
+  parentTaskId: string | null;
+  createdAt: string;
+  canPerformActions: {
+    canAccept: boolean;
+    canStart: boolean;
+    canSubmitForReview: boolean;
+    canComplete: boolean;
+    canRequestChanges: boolean;
+    canBlock: boolean;
+    canUnblock: boolean;
+    canCancel: boolean;
+  };
+}
+
+export interface WorkboardFilterOptions {
+  search?: string;
+  status?: TaskStatus | "all";
+  priority?: TaskPriority | "all";
+  groupId?: string | "all";
+  scope?: "all" | "my_work";
+  includeArchived?: boolean;
+}
+
+export interface WorkboardData {
+  tasks: WorkboardTask[];
+  groups: Array<{ id: string; name: string; slug: string }>;
+  currentUser: {
+    id: string;
+    role: UserRole;
+    primaryGroupId: string | null;
+  };
+  countsByStatus: Record<TaskStatus, number>;
+}
+

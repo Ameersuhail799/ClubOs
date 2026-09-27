@@ -92,9 +92,9 @@ export function CommandCenterContent({
           </div>
 
           <div className="flex items-center gap-3">
-            <Link href="/workspace/tasks/demo-01">
+            <Link href="/workspace/tasks">
               <Button variant="outline" size="sm">
-                Open Task Inspector Sample
+                Workboard
               </Button>
             </Link>
             <Button

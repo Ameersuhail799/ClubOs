@@ -46,6 +46,11 @@ export function WorkspaceHeader({
       roles: ["main_head"],
     },
     {
+      href: "/workspace/tasks",
+      label: "Workboard",
+      roles: ["main_head", "group_head", "member"],
+    },
+    {
       href: "/workspace/group",
       label: "Group",
       roles: ["main_head", "group_head"],
