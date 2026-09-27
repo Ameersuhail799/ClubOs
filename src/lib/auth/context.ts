@@ -129,11 +129,26 @@ export async function getCurrentOrganizationContext(): Promise<OrganizationConte
     };
   }
 
+  const organization = membership.organization as Database["public"]["Tables"]["organizations"]["Row"] | null;
+
+  if (!organization || organization.status !== "active") {
+    return {
+      user,
+      profile,
+      membership,
+      organization: organization || null,
+      primaryGroup: (membership.primary_group as any) || null,
+      role: membership.role,
+      status: membership.status,
+      error: "no_membership",
+    };
+  }
+
   return {
     user,
     profile,
     membership,
-    organization: membership.organization as Database["public"]["Tables"]["organizations"]["Row"],
+    organization,
     primaryGroup: membership.primary_group as Database["public"]["Tables"]["groups"]["Row"] | null,
     role: membership.role,
     status: membership.status,
