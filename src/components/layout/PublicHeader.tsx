@@ -34,6 +34,24 @@ export function PublicHeader() {
           >
             Events & Workshops
           </Link>
+          <Link
+            href="/#programs"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+          >
+            Programs
+          </Link>
+          <Link
+            href="/#gallery"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+          >
+            Gallery
+          </Link>
+          <Link
+            href="/#about"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+          >
+            About
+          </Link>
           <div className="h-4 w-[1px] bg-outline-variant" />
           <Link href="/login">
             <Button variant="primary" size="sm">
@@ -89,6 +107,27 @@ export function PublicHeader() {
             className="px-3 py-2 rounded text-body-md font-medium text-on-surface hover:bg-surface-container"
           >
             Events & Workshops
+          </Link>
+          <Link
+            href="/#programs"
+            onClick={() => setMobileMenuOpen(false)}
+            className="px-3 py-2 rounded text-body-md font-medium text-on-surface hover:bg-surface-container"
+          >
+            Programs
+          </Link>
+          <Link
+            href="/#gallery"
+            onClick={() => setMobileMenuOpen(false)}
+            className="px-3 py-2 rounded text-body-md font-medium text-on-surface hover:bg-surface-container"
+          >
+            Gallery
+          </Link>
+          <Link
+            href="/#about"
+            onClick={() => setMobileMenuOpen(false)}
+            className="px-3 py-2 rounded text-body-md font-medium text-on-surface hover:bg-surface-container"
+          >
+            About
           </Link>
           <div className="pt-2 border-t border-outline-variant">
             <Link href="/login" onClick={() => setMobileMenuOpen(false)}>

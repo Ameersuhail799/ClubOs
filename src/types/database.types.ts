@@ -625,6 +625,65 @@ export type Database = {
         }
         Relationships: []
       }
+      public_content: {
+        Row: {
+          body: string | null
+          content_type: string
+          created_at: string
+          created_by: string
+          id: string
+          media_url: string | null
+          metadata: Json
+          organization_id: string
+          slug: string | null
+          sort_order: number
+          status: string
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          content_type: string
+          created_at?: string
+          created_by: string
+          id?: string
+          media_url?: string | null
+          metadata?: Json
+          organization_id: string
+          slug?: string | null
+          sort_order?: number
+          status?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          content_type?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          media_url?: string | null
+          metadata?: Json
+          organization_id?: string
+          slug?: string | null
+          sort_order?: number
+          status?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "public_content_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_access: {
         Row: {
           created_at: string

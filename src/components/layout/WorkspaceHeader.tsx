@@ -62,6 +62,11 @@ export function WorkspaceHeader({
       roles: ["main_head"],
     },
     {
+      href: "/workspace/admin/content",
+      label: "Public Content",
+      roles: ["main_head"],
+    },
+    {
       href: "/workspace/my-day",
       label: "My Day",
       roles: ["member"],
