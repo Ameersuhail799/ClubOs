@@ -1807,8 +1807,17 @@ export async function getTaskFullDetails(
   }
 
   // 8. Files
+  const isGroupHeadForTask =
+    role === "group_head" &&
+    Boolean(userGroupId && task.primary_group_id === userGroupId);
+
   const files: TaskFile[] = rawFiles.map((f) => {
     const uploaderProf = profileMap.get(f.uploader_id);
+    const canDelete =
+      role === "main_head" ||
+      isGroupHeadForTask ||
+      f.uploader_id === userId;
+
     return {
       id: f.id,
       taskId: f.task_id || task.id,
@@ -1819,6 +1828,7 @@ export async function getTaskFullDetails(
       uploaderId: f.uploader_id,
       uploaderName: uploaderProf?.fullName || "Unknown",
       createdAt: f.created_at,
+      canDelete,
     };
   });
 

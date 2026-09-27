@@ -107,7 +107,9 @@ export function TaskInspector({ task }: TaskInspectorProps) {
             {activeTab === "discussion" && (
               <TaskConversationTab task={task} onRefresh={handleRefresh} />
             )}
-            {activeTab === "files" && <TaskFilesTab task={task} />}
+            {activeTab === "files" && (
+              <TaskFilesTab task={task} onRefresh={handleRefresh} />
+            )}
             {activeTab === "activity" && <TaskActivityTab task={task} />}
           </div>
         </div>

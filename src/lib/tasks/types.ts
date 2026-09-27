@@ -122,6 +122,7 @@ export interface TaskFile {
   uploaderId: string;
   uploaderName: string;
   createdAt: string;
+  canDelete?: boolean;
 }
 
 export interface TaskActivity {

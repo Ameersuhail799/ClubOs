@@ -243,6 +243,7 @@ export type Database = {
       }
       file_metadata: {
         Row: {
+          bucket_id: string
           created_at: string
           event_id: string | null
           file_name: string
@@ -256,6 +257,7 @@ export type Database = {
           uploader_id: string
         }
         Insert: {
+          bucket_id?: string
           created_at?: string
           event_id?: string | null
           file_name: string
@@ -269,6 +271,7 @@ export type Database = {
           uploader_id: string
         }
         Update: {
+          bucket_id?: string
           created_at?: string
           event_id?: string | null
           file_name?: string
