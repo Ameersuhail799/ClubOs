@@ -8,6 +8,7 @@ import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typogr
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { TaskDelegationDrawer } from "./TaskDelegationDrawer";
+import { WhatsAppHandoffButton } from "@/components/whatsapp/WhatsAppHandoffButton";
 import {
   acceptTaskAction,
   startTaskAction,
@@ -658,6 +659,18 @@ export function GroupWorkspaceContent({ initialData }: GroupWorkspaceContentProp
                                         Changes
                                       </Button>
                                     </>
+                                  )}
+
+                                  {subtask.assignee_id && (
+                                    <WhatsAppHandoffButton
+                                      taskId={subtask.id}
+                                      recipientId={subtask.assignee_id}
+                                      intent="progress_check"
+                                      variant="outline"
+                                      size="sm"
+                                      label="WhatsApp"
+                                      className="h-8 text-body-sm text-secondary hover:text-on-surface"
+                                    />
                                   )}
 
                                   <Link href={`/workspace/tasks/${subtask.id}`}>

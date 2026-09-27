@@ -6,6 +6,7 @@ import { LabelCaps, LabelCode, BodyMd } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { grantTaskAccessAction, revokeTaskAccessAction } from "@/lib/tasks/actions";
+import { WhatsAppHandoffButton } from "@/components/whatsapp/WhatsAppHandoffButton";
 import type { TaskWithFullDetails, TaskPermission } from "@/lib/tasks/types";
 
 interface TaskOverviewTabProps {
@@ -257,9 +258,22 @@ export function TaskOverviewTab({ task, onRefresh }: TaskOverviewTabProps) {
 
             {/* Functional Lead */}
             <div className="flex flex-col pb-3 border-b border-outline-variant">
-              <span className="text-secondary uppercase text-[10px] tracking-wider">
-                FUNCTIONAL GROUP LEAD
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-secondary uppercase text-[10px] tracking-wider">
+                  FUNCTIONAL GROUP LEAD
+                </span>
+                {task.assigned_head_id && (
+                  <WhatsAppHandoffButton
+                    taskId={task.id}
+                    recipientId={task.assigned_head_id}
+                    intent="clarification"
+                    variant="ghost"
+                    size="sm"
+                    label="WhatsApp"
+                    className="h-5 px-1.5 text-xs text-secondary hover:text-on-surface"
+                  />
+                )}
+              </div>
               <span className="text-on-surface font-semibold text-body-sm mt-0.5">
                 {task.assignedHeadProfile?.fullName || "Unassigned Group Head"}
               </span>
@@ -270,9 +284,22 @@ export function TaskOverviewTab({ task, onRefresh }: TaskOverviewTabProps) {
 
             {/* Assignee / Contributor */}
             <div className="flex flex-col">
-              <span className="text-secondary uppercase text-[10px] tracking-wider">
-                DELEGATEE / ACTIVE EXECUTOR
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-secondary uppercase text-[10px] tracking-wider">
+                  DELEGATEE / ACTIVE EXECUTOR
+                </span>
+                {task.assignee_id && (
+                  <WhatsAppHandoffButton
+                    taskId={task.id}
+                    recipientId={task.assignee_id}
+                    intent="progress_check"
+                    variant="ghost"
+                    size="sm"
+                    label="WhatsApp"
+                    className="h-5 px-1.5 text-xs text-secondary hover:text-on-surface"
+                  />
+                )}
+              </div>
               <span className="text-on-surface font-semibold text-body-sm mt-0.5">
                 {task.assigneeProfile?.fullName ||
                   (task.is_volunteer_pool

@@ -16,6 +16,7 @@ import {
   updateTaskParametersAction,
 } from "@/lib/tasks/actions";
 import type { TaskWithFullDetails, TaskPriority } from "@/lib/tasks/types";
+import { WhatsAppHandoffModal } from "@/components/whatsapp/WhatsAppHandoffModal";
 
 interface TaskActionStripProps {
   task: TaskWithFullDetails;
@@ -28,7 +29,7 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
 
   // Modal / Input dialog states
   const [activeModal, setActiveModal] = useState<
-    "none" | "request_changes" | "block" | "cancel" | "reassign" | "parameters"
+    "none" | "request_changes" | "block" | "cancel" | "reassign" | "parameters" | "whatsapp"
   >("none");
 
   // Form field states
@@ -277,6 +278,21 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
               Cancel
             </Button>
           )}
+
+          {/* Safe WhatsApp Handoff */}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isPending}
+            onClick={() => setActiveModal("whatsapp")}
+            className="text-secondary hover:text-on-surface"
+            title="Open safe WhatsApp task handoff"
+          >
+            <span className="flex items-center gap-1.5">
+              <span>WhatsApp</span>
+              <span className="text-[10px] font-mono opacity-70">↗</span>
+            </span>
+          </Button>
         </div>
       </div>
 
@@ -552,6 +568,13 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
           </form>
         </div>
       )}
+
+      {/* MODAL: Safe WhatsApp Handoff */}
+      <WhatsAppHandoffModal
+        taskId={task.id}
+        isOpen={activeModal === "whatsapp"}
+        onClose={() => setActiveModal("none")}
+      />
     </div>
   );
 }

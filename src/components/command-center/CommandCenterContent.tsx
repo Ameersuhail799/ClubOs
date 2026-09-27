@@ -8,6 +8,7 @@ import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typogr
 import { StatusBadge, type StatusVariant } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { TaskCreationDrawer } from "@/components/tasks/TaskCreationDrawer";
+import { WhatsAppHandoffButton } from "@/components/whatsapp/WhatsAppHandoffButton";
 import type { TaskWithDetails, EligibleGroupHead, TaskRow, TaskStatus } from "@/lib/tasks/types";
 
 interface GroupData {
@@ -215,7 +216,18 @@ export function CommandCenterContent({
                       </div>
                     </div>
 
-                    <div className="flex items-center shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
+                      {directive.assigned_head_id && (
+                        <WhatsAppHandoffButton
+                          taskId={directive.id}
+                          recipientId={directive.assigned_head_id}
+                          intent="clarification"
+                          variant="outline"
+                          size="sm"
+                          label="WhatsApp"
+                          className="h-8 text-body-sm text-secondary hover:text-on-surface"
+                        />
+                      )}
                       <Link
                         href={`/workspace/tasks/${directive.id}`}
                         className="inline-flex items-center justify-center font-mono text-body-sm h-8 px-3.5 rounded border border-outline-variant bg-surface-container-lowest text-primary hover:bg-surface-container transition-colors"
