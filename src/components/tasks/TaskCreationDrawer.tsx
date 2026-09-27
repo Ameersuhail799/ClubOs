@@ -47,6 +47,18 @@ export function TaskCreationDrawer({
   // Client submission token for double-submission protection
   const submissionToken = useId();
 
+  // Dismiss on Escape key
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isPending) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isPending, onClose]);
+
   if (!isOpen) return null;
 
   // Filter group heads by currently selected primary group
@@ -134,7 +146,12 @@ export function TaskCreationDrawer({
     !isPending;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-task-drawer-title"
+      className="fixed inset-0 z-50 flex justify-end"
+    >
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/40 transition-opacity"
@@ -156,7 +173,7 @@ export function TaskCreationDrawer({
                 TOP-LEVEL
               </StatusBadge>
             </div>
-            <h3 className="font-sans font-bold text-headline-sm text-on-surface">
+            <h3 id="create-task-drawer-title" className="font-sans font-bold text-headline-sm text-on-surface">
               Create Task Directive
             </h3>
             <p className="font-sans text-body-sm text-secondary">

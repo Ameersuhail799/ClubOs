@@ -45,6 +45,18 @@ export function TaskActionStrip({ task, onRefresh }: TaskActionStripProps) {
 
   const { canPerformActions } = task;
 
+  // Handle escape key to dismiss active sub-modal
+  React.useEffect(() => {
+    if (activeModal === "none" || activeModal === "whatsapp") return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isPending) {
+        setActiveModal("none");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeModal, isPending]);
+
   const handleSimpleAction = (actionFn: () => Promise<any>) => {
     setActionError(null);
     startTransition(async () => {
