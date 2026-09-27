@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brandmark } from "@/components/brand/Brandmark";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { cn } from "@/lib/utils";
 
 interface WorkspaceHeaderProps {
@@ -93,7 +94,7 @@ export function WorkspaceHeader({
     {
       href: "/workspace/notifications",
       label: "Notifications",
-      roles: ["main_head", "group_head"],
+      roles: ["main_head", "group_head", "member"],
     },
   ];
 
@@ -140,8 +141,10 @@ export function WorkspaceHeader({
           })}
         </nav>
 
-        {/* Right: User identity info & Sign Out */}
+        {/* Right: Notification Bell, User identity info & Sign Out */}
         <div className="flex items-center gap-3">
+          <NotificationBell />
+
           {(userName || userEmail) && (
             <div className="hidden md:flex flex-col text-right">
               <span className="text-body-sm font-medium text-on-surface leading-tight">

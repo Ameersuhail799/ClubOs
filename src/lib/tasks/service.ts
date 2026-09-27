@@ -40,6 +40,7 @@ import type {
   WorkboardData,
 } from "./types";
 import type { PersonalTodoWithTask } from "@/lib/todos/types";
+import { sendNotification } from "@/lib/notifications/service";
 
 /**
  * Creates an immutable administrative audit record for task lifecycle events.
@@ -267,6 +268,16 @@ export async function createTask(input: CreateTaskInput): Promise<TaskResult<Tas
       newState: { assigned_head_id: newTask.assigned_head_id },
       metadata: { target_head_id: newTask.assigned_head_id },
     });
+
+    await sendNotification({
+      organizationId,
+      recipientId: newTask.assigned_head_id,
+      actorId: context.user.id,
+      taskId: newTask.id,
+      type: "task_assigned",
+      title: `Directive assigned: ${newTask.title}`,
+      body: `Main Head assigned institutional directive [${newTask.task_code}] to your group.`,
+    });
   }
 
   return { success: true, data: newTask };
@@ -458,6 +469,18 @@ export async function delegateTask(input: DelegateTaskInput): Promise<TaskResult
     },
   });
 
+  if (childTask.assignee_id) {
+    await sendNotification({
+      organizationId,
+      recipientId: childTask.assignee_id,
+      actorId: context.user.id,
+      taskId: childTask.id,
+      type: "task_delegated",
+      title: `Subtask delegated: ${childTask.title}`,
+      body: `Delegated to you by ${context.profile?.full_name || "Group Head"} [${childTask.task_code}].`,
+    });
+  }
+
   return { success: true, data: childTask };
 }
 
@@ -527,6 +550,18 @@ export async function acceptTask(taskId: string): Promise<TaskResult<TaskRow>> {
     previousState: { status: task.status },
     newState: { status: "accepted" },
   });
+
+  if (task.created_by && task.created_by !== context.user.id) {
+    await sendNotification({
+      organizationId,
+      recipientId: task.created_by,
+      actorId: context.user.id,
+      taskId,
+      type: "task_accepted",
+      title: `Directive accepted: ${task.title}`,
+      body: `${context.profile?.full_name || "Group Head"} accepted responsibility for [${task.task_code}].`,
+    });
+  }
 
   return { success: true, data: updatedTask };
 }
@@ -663,6 +698,19 @@ export async function submitTaskForReview(taskId: string): Promise<TaskResult<Ta
     newState: { status: "ready_for_review" },
   });
 
+  const reviewerId = task.assigned_head_id || task.created_by;
+  if (reviewerId && reviewerId !== context.user.id) {
+    await sendNotification({
+      organizationId,
+      recipientId: reviewerId,
+      actorId: context.user.id,
+      taskId,
+      type: "review_requested",
+      title: `Review requested: ${task.title}`,
+      body: `${context.profile?.full_name || "Member"} submitted [${task.task_code}] for review.`,
+    });
+  }
+
   return { success: true, data: updatedTask };
 }
 
@@ -748,6 +796,18 @@ export async function completeTask(taskId: string): Promise<TaskResult<TaskRow>>
     previousState: { status: task.status },
     newState: { status: "completed", completed_at: now },
   });
+
+  if (task.assignee_id && task.assignee_id !== context.user.id) {
+    await sendNotification({
+      organizationId,
+      recipientId: task.assignee_id,
+      actorId: context.user.id,
+      taskId,
+      type: "task_approved",
+      title: `Work approved: ${task.title}`,
+      body: `${context.profile?.full_name || "Lead"} approved and completed [${task.task_code}].`,
+    });
+  }
 
   return { success: true, data: updatedTask };
 }
@@ -1089,6 +1149,19 @@ export async function reassignTask(
       assigned_head_id: updatedTask.assigned_head_id,
     },
   });
+
+  const newOwnerId = input.assigneeId || input.assignedHeadId;
+  if (newOwnerId && newOwnerId !== context.user.id) {
+    await sendNotification({
+      organizationId,
+      recipientId: newOwnerId,
+      actorId: context.user.id,
+      taskId,
+      type: "task_reassigned",
+      title: `Task reassigned: ${updatedTask.title}`,
+      body: `You are now responsible for [${updatedTask.task_code}].`,
+    });
+  }
 
   return { success: true, data: updatedTask };
 }
@@ -2065,6 +2138,37 @@ export async function addComment({
     },
   });
 
+  if (!effectiveInternalNote) {
+    const { data: task } = await adminClient
+      .from("tasks")
+      .select("id, task_code, assignee_id, assigned_head_id, created_by")
+      .eq("id", taskId)
+      .maybeSingle();
+
+    if (task) {
+      const notifyTarget =
+        task.assignee_id && task.assignee_id !== userId
+          ? task.assignee_id
+          : task.assigned_head_id && task.assigned_head_id !== userId
+          ? task.assigned_head_id
+          : task.created_by !== userId
+          ? task.created_by
+          : null;
+
+      if (notifyTarget) {
+        await sendNotification({
+          organizationId,
+          recipientId: notifyTarget,
+          actorId: userId,
+          taskId,
+          type: "comment_mention",
+          title: `Comment on ${task.task_code || "task"}`,
+          body: `${context.profile?.full_name || "A member"} commented: "${trimmedContent.slice(0, 100)}${trimmedContent.length > 100 ? "..." : ""}"`,
+        });
+      }
+    }
+  }
+
   return {
     success: true,
     data: {
@@ -2159,6 +2263,18 @@ export async function requestChanges(
       author_id: context.user.id,
       content: `[Changes Requested]: ${feedback.trim()}`,
       is_internal_note: false,
+    });
+  }
+
+  if (task.assignee_id && task.assignee_id !== context.user.id) {
+    await sendNotification({
+      organizationId,
+      recipientId: task.assignee_id,
+      actorId: context.user.id,
+      taskId,
+      type: "review_requested",
+      title: `Changes requested: ${task.title}`,
+      body: feedback ? `Feedback: "${feedback.trim().slice(0, 120)}"` : `Lead requested revisions on [${task.task_code}].`,
     });
   }
 

@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentOrganizationContext, type UserRole, type MemberStatus } from "@/lib/auth/context";
 import type { Database } from "@/types/database.types";
+import { sendNotification } from "@/lib/notifications/service";
 
 export interface DirectoryMember {
   id: string; // organization_members.id
@@ -360,6 +361,15 @@ export async function resetMemberAccess(
     },
   });
 
+  await sendNotification({
+    organizationId,
+    recipientId: member.user_id,
+    actorId: context.user.id,
+    type: "system_alert",
+    title: "Security: Password Reset Dispatched",
+    body: "An administrator dispatched password recovery instructions to your email.",
+  });
+
   return {
     success: true,
     message: `Password reset instructions dispatched to ${email}.`,
@@ -522,6 +532,15 @@ export async function reactivateMember(
       primary_group_id: member.primary_group_id,
       target_user_id: member.user_id,
     },
+  });
+
+  await sendNotification({
+    organizationId,
+    recipientId: member.user_id,
+    actorId: context.user.id,
+    type: "system_alert",
+    title: "Account Reactivated",
+    body: "Your organizational workspace access has been reactivated.",
   });
 
   return {
