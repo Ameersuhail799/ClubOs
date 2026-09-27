@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentOrganizationContext } from "@/lib/auth/context";
 import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 
+export const dynamic = "force-dynamic";
+
 export default async function WorkspaceLayout({
   children,
 }: {
