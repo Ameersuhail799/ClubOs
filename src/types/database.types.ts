@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -541,6 +541,7 @@ export type Database = {
       personal_todos: {
         Row: {
           created_at: string
+          due_date: string | null
           id: string
           is_completed: boolean
           organization_id: string
@@ -552,6 +553,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          due_date?: string | null
           id?: string
           is_completed?: boolean
           organization_id: string
@@ -563,6 +565,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          due_date?: string | null
           id?: string
           is_completed?: boolean
           organization_id?: string

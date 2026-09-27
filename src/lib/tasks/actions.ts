@@ -22,6 +22,7 @@ import {
   getTaskCreationContext,
   getOrganizationDirectives,
   getGroupWorkspaceData,
+  getMemberWorkbenchData,
 } from "./service";
 import type {
   TaskRow,
@@ -38,6 +39,7 @@ import type {
   EligibleGroupHead,
   TaskWithDetails,
   GroupWorkspaceData,
+  MemberWorkbenchData,
 } from "./types";
 
 /**
@@ -150,6 +152,13 @@ export async function getGroupWorkspaceDataAction(
 }
 
 /**
+ * Server Action to load member workbench dataset (/workspace/my-day).
+ */
+export async function getMemberWorkbenchDataAction(): Promise<TaskResult<MemberWorkbenchData>> {
+  return getMemberWorkbenchData();
+}
+
+/**
  * Server Action to accept an assigned task.
  */
 export async function acceptTaskAction(taskId: string): Promise<TaskResult<TaskRow>> {
@@ -157,6 +166,8 @@ export async function acceptTaskAction(taskId: string): Promise<TaskResult<TaskR
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -170,6 +181,8 @@ export async function startTaskAction(taskId: string): Promise<TaskResult<TaskRo
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -183,6 +196,8 @@ export async function submitTaskForReviewAction(taskId: string): Promise<TaskRes
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -196,6 +211,8 @@ export async function completeTaskAction(taskId: string): Promise<TaskResult<Tas
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -212,6 +229,8 @@ export async function requestChangesAction(
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -228,6 +247,8 @@ export async function blockTaskAction(
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;
@@ -241,6 +262,8 @@ export async function unblockTaskAction(taskId: string): Promise<TaskResult<Task
   if (result.success) {
     revalidatePath("/workspace");
     revalidatePath("/workspace/group");
+    revalidatePath("/workspace/my-day");
+    revalidatePath("/workspace/my-tasks");
     revalidatePath(`/workspace/tasks/${taskId}`);
   }
   return result;

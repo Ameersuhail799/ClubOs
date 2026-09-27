@@ -8,7 +8,7 @@ import { HeadlineMd, BodyMd, LabelCaps } from "@/components/ui/Typography";
 
 export const dynamic = "force-dynamic";
 
-export default async function MyDayPage() {
+export default async function TodoPage() {
   const context = await getCurrentOrganizationContext();
 
   if (!context || !context.user) {
@@ -28,9 +28,9 @@ export default async function MyDayPage() {
         <PageContainer>
           <div className="p-8 rounded bg-surface-container-lowest border border-outline-variant flex flex-col gap-3 max-w-lg mx-auto text-center items-center">
             <LabelCaps className="text-error font-bold">Workbench Unavailable</LabelCaps>
-            <HeadlineMd>Unable to Load My Day</HeadlineMd>
+            <HeadlineMd>Unable to Load Todo</HeadlineMd>
             <BodyMd className="text-secondary">
-              {result.error || "An error occurred while loading your member workbench."}
+              {result.error || "An error occurred while loading your personal scratchpad."}
             </BodyMd>
           </div>
         </PageContainer>
@@ -38,5 +38,5 @@ export default async function MyDayPage() {
     );
   }
 
-  return <MemberWorkbenchContent initialData={result.data} initialTab="my-day" />;
+  return <MemberWorkbenchContent initialData={result.data} initialTab="todo" />;
 }

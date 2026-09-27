@@ -51,19 +51,44 @@ export function WorkspaceHeader({
       roles: ["main_head", "group_head"],
     },
     {
+      href: "/workspace/admin/members",
+      label: "Members",
+      roles: ["main_head"],
+    },
+    {
       href: "/workspace/my-day",
       label: "My Day",
-      roles: ["main_head", "group_head", "member"],
+      roles: ["member"],
+    },
+    {
+      href: "/workspace/my-tasks",
+      label: "My Tasks",
+      roles: ["member"],
+    },
+    {
+      href: "/workspace/todo",
+      label: "Todo",
+      roles: ["member"],
+    },
+    {
+      href: "/workspace/updates",
+      label: "Updates",
+      roles: ["member"],
+    },
+    {
+      href: "/workspace/my-group",
+      label: "My Group",
+      roles: ["member"],
+    },
+    {
+      href: "/workspace/profile",
+      label: "Profile",
+      roles: ["member"],
     },
     {
       href: "/workspace/notifications",
       label: "Notifications",
-      roles: ["main_head", "group_head", "member"],
-    },
-    {
-      href: "/workspace/admin/members",
-      label: "Members",
-      roles: ["main_head"],
+      roles: ["main_head", "group_head"],
     },
   ];
 

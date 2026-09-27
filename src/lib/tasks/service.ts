@@ -33,7 +33,10 @@ import type {
   TaskWithFullDetails,
   GroupWorkspaceData,
   GroupMemberWorkload,
+  MemberWorkbenchData,
+  MemberActivityItem,
 } from "./types";
+import type { PersonalTodoWithTask } from "@/lib/todos/types";
 
 /**
  * Creates an immutable administrative audit record for task lifecycle events.
@@ -2626,4 +2629,309 @@ export async function getGroupWorkspaceData(
     },
   };
 }
+
+/**
+ * Loads the complete dataset for the Member Workbench (/workspace/my-day).
+ * Strictly enforced: Only active members of the organization can access.
+ */
+export async function getMemberWorkbenchData(): Promise<TaskResult<MemberWorkbenchData>> {
+  const context = await getCurrentOrganizationContext();
+
+  if (!context || !context.user || context.status !== "active") {
+    return { error: "Authentication required.", code: "unauthorized" };
+  }
+
+  const organizationId = context.organization?.id;
+  if (!organizationId) {
+    return { error: "Caller is not bound to a valid organization.", code: "unauthorized" };
+  }
+
+  // Strict role boundary: Group Heads and Main Heads must not access Member Workbench data path
+  if (context.role !== "member") {
+    return {
+      error: "Access Denied: Only active members can access the Member Workbench.",
+      code: "forbidden",
+    };
+  }
+
+  const adminClient = createAdminClient();
+  const userId = context.user.id;
+
+  // 1. Fetch tasks assigned directly to the member
+  const { data: rawAssignedTasks, error: tasksErr } = await adminClient
+    .from("tasks")
+    .select(`
+      *,
+      primary_group:groups(id, name, slug)
+    `)
+    .eq("organization_id", organizationId)
+    .eq("assignee_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (tasksErr) {
+    return { error: `Failed to load member tasks: ${tasksErr.message}`, code: "internal_error" };
+  }
+
+  // 2. Fetch any explicit collaboration tasks via task_access
+  const { data: accessRows } = await adminClient
+    .from("task_access")
+    .select("task_id")
+    .eq("user_id", userId);
+
+  const directTaskIds = new Set((rawAssignedTasks || []).map((t) => t.id));
+  const collabTaskIds = (accessRows || [])
+    .map((a) => a.task_id)
+    .filter((id): id is string => Boolean(id) && !directTaskIds.has(id));
+
+  let rawCollabTasks: any[] = [];
+  if (collabTaskIds.length > 0) {
+    const { data: collabTasks } = await adminClient
+      .from("tasks")
+      .select(`
+        *,
+        primary_group:groups(id, name, slug)
+      `)
+      .eq("organization_id", organizationId)
+      .in("id", collabTaskIds);
+
+    rawCollabTasks = collabTasks || [];
+  }
+
+  const combinedRawTasks = [...(rawAssignedTasks || []), ...rawCollabTasks];
+
+  // 3. Resolve parent directive metadata for any child subtasks
+  const parentTaskIds = Array.from(
+    new Set(
+      combinedRawTasks
+        .map((t) => t.parent_task_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  let parentMap = new Map<string, { id: string; task_code: string; title: string; status: TaskStatus }>();
+  if (parentTaskIds.length > 0) {
+    const { data: parentTasks } = await adminClient
+      .from("tasks")
+      .select("id, task_code, title, status")
+      .in("id", parentTaskIds);
+
+    for (const p of parentTasks || []) {
+      parentMap.set(p.id, p as any);
+    }
+  }
+
+  // 4. Gather user profiles for tasks
+  const userIdsToFetch = Array.from(
+    new Set(
+      combinedRawTasks
+        .flatMap((t) => [t.assigned_head_id, t.created_by, t.assignee_id])
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  let profileMap = new Map<string, { id: string; fullName: string; email: string; avatarUrl: string | null }>();
+  if (userIdsToFetch.length > 0) {
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("id, full_name, email, avatar_url")
+      .in("id", userIdsToFetch);
+
+    for (const p of profiles || []) {
+      profileMap.set(p.id, {
+        id: p.id,
+        fullName: p.full_name || "Unknown",
+        email: p.email || "",
+        avatarUrl: p.avatar_url || null,
+      });
+    }
+  }
+
+  // 5. Structure enriched tasks
+  const enrichedTasks: TaskWithDetails[] = combinedRawTasks.map((t) => {
+    const grp = t.primary_group as { id: string; name: string; slug: string } | null;
+    const parent = t.parent_task_id ? parentMap.get(t.parent_task_id) : null;
+
+    return {
+      ...t,
+      primaryGroup: grp,
+      assignedHeadProfile: t.assigned_head_id ? profileMap.get(t.assigned_head_id) || null : null,
+      assigneeProfile: t.assignee_id ? profileMap.get(t.assignee_id) || null : null,
+      creatorProfile: t.created_by ? profileMap.get(t.created_by) || null : null,
+      parentTask: parent || null,
+    };
+  });
+
+  // 6. Fetch personal todos for this member
+  const { data: rawTodos } = await adminClient
+    .from("personal_todos")
+    .select("*")
+    .eq("user_id", userId)
+    .order("is_completed", { ascending: true })
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: false });
+
+  const taskByIdMap = new Map(enrichedTasks.map((t) => [t.id, t]));
+  const personalTodos: PersonalTodoWithTask[] = (rawTodos || []).map((todo) => {
+    const linkedTask = todo.task_id ? taskByIdMap.get(todo.task_id) : null;
+    return {
+      ...todo,
+      task: linkedTask
+        ? {
+            id: linkedTask.id,
+            taskCode: linkedTask.task_code,
+            title: linkedTask.title,
+            status: linkedTask.status,
+            priority: linkedTask.priority,
+          }
+        : null,
+    };
+  });
+
+  // 7. Fetch recent activity for "What Changed"
+  const memberTaskIds = enrichedTasks.map((t) => t.id);
+  let recentActivities: MemberActivityItem[] = [];
+
+  if (memberTaskIds.length > 0) {
+    const { data: activities } = await adminClient
+      .from("activity_records")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .in("task_id", memberTaskIds)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const actorIds = Array.from(new Set((activities || []).map((a) => a.actor_id).filter((id): id is string => Boolean(id))));
+    let actorMap = new Map<string, string>();
+    if (actorIds.length > 0) {
+      const { data: actors } = await adminClient
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", actorIds);
+      for (const a of actors || []) {
+        actorMap.set(a.id, a.full_name || "Club Member");
+      }
+    }
+
+    recentActivities = (activities || []).map((act) => {
+      const task = act.task_id ? taskByIdMap.get(act.task_id) : null;
+      const actorName = act.actor_id ? actorMap.get(act.actor_id) || "ClubOS" : "ClubOS";
+
+      let description = "";
+      if (act.action === "task_assigned") {
+        description = `${actorName} assigned ${task?.task_code || "a task"} to you`;
+      } else if (act.action === "task_started") {
+        description = `Work started on ${task?.task_code || "task"}`;
+      } else if (act.action === "task_submitted") {
+        description = `Submitted ${task?.task_code || "task"} for lead review`;
+      } else if (act.action === "task_reviewed") {
+        const res = (act.metadata as any)?.result;
+        if (res === "changes_requested") {
+          description = `${actorName} requested changes on ${task?.task_code || "task"}`;
+        } else {
+          description = `${actorName} reviewed ${task?.task_code || "task"}`;
+        }
+      } else if (act.action === "task_completed") {
+        description = `${actorName} approved & completed ${task?.task_code || "task"}`;
+      } else if (act.action === "task_blocked") {
+        description = `Blocker reported on ${task?.task_code || "task"}`;
+      } else if (act.action === "task_unblocked") {
+        description = `Blocker resolved on ${task?.task_code || "task"}`;
+      } else {
+        description = `${actorName} updated ${task?.task_code || "task"}`;
+      }
+
+      return {
+        id: act.id,
+        action: act.action,
+        createdAt: act.created_at,
+        taskId: act.task_id,
+        taskCode: task?.task_code || null,
+        taskTitle: task?.title || null,
+        actorName,
+        description,
+        details: (act.metadata as any)?.feedback || null,
+      };
+    });
+  }
+
+  // 8. Segregate tasks for My Day
+  const activeTasks = enrichedTasks.filter(
+    (t) => t.status !== "completed" && t.status !== "cancelled"
+  );
+
+  // NEEDS ATTENTION:
+  // - assigned (not yet started)
+  // - blocked
+  // - in_progress with recent changes requested
+  const needsAttention = activeTasks.filter(
+    (t) =>
+      t.status === "assigned" ||
+      t.status === "blocked" ||
+      (t.status === "in_progress" && recentActivities.some((a) => a.taskId === t.id && a.action === "task_reviewed"))
+  );
+
+  // IN PROGRESS:
+  const inProgress = activeTasks.filter(
+    (t) => t.status === "in_progress" || t.status === "accepted"
+  );
+
+  // UPCOMING:
+  const upcoming = activeTasks.filter((t) => {
+    if (t.deadline) {
+      const d = new Date(t.deadline);
+      return d.getTime() > Date.now();
+    }
+    return t.status !== "assigned" && t.status !== "in_progress" && t.status !== "blocked";
+  });
+
+  // COMPLETED:
+  const completed = enrichedTasks.filter(
+    (t) => t.status === "completed" || t.status === "ready_for_review"
+  );
+
+  // 9. Capacity calculation
+  const activeCount = activeTasks.length;
+  let capacityStatus: "Available" | "Moderate" | "Busy" = "Available";
+  if (activeCount >= 4) {
+    capacityStatus = "Busy";
+  } else if (activeCount >= 2) {
+    capacityStatus = "Moderate";
+  }
+
+  return {
+    success: true,
+    data: {
+      member: {
+        userId,
+        fullName: context.profile?.full_name || "Club Member",
+        email: context.profile?.email || context.user.email || "",
+        role: context.role,
+        status: context.status!,
+        avatarUrl: context.profile?.avatar_url || null,
+        primaryGroup: context.primaryGroup
+          ? {
+              id: context.primaryGroup.id,
+              name: context.primaryGroup.name,
+              slug: context.primaryGroup.slug,
+            }
+          : null,
+      },
+      capacity: {
+        activeCount,
+        maxRecommended: 3,
+        status: capacityStatus,
+      },
+      tasks: {
+        all: enrichedTasks,
+        needsAttention,
+        inProgress,
+        upcoming,
+        completed,
+      },
+      todos: personalTodos,
+      recentActivity: recentActivities,
+    },
+  };
+}
+
 

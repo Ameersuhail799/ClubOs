@@ -235,3 +235,47 @@ export interface TaskWithFullDetails extends TaskWithDetails {
     canComment: boolean;
   };
 }
+
+export interface MemberActivityItem {
+  id: string;
+  action: string;
+  createdAt: string;
+  taskId: string | null;
+  taskCode?: string | null;
+  taskTitle?: string | null;
+  actorName?: string | null;
+  actorRole?: string | null;
+  description: string;
+  details?: string | null;
+}
+
+export interface MemberWorkbenchData {
+  member: {
+    userId: string;
+    fullName: string;
+    email: string;
+    role: UserRole;
+    status: MemberStatus;
+    avatarUrl: string | null;
+    primaryGroup: {
+      id: string;
+      name: string;
+      slug: string;
+    } | null;
+  };
+  capacity: {
+    activeCount: number;
+    maxRecommended: number;
+    status: "Available" | "Moderate" | "Busy";
+  };
+  tasks: {
+    all: TaskWithDetails[];
+    needsAttention: TaskWithDetails[];
+    inProgress: TaskWithDetails[];
+    upcoming: TaskWithDetails[];
+    completed: TaskWithDetails[];
+  };
+  todos: any[];
+  recentActivity: MemberActivityItem[];
+}
+
