@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { HeadlineSm, BodySm, LabelCaps } from "@/components/ui/Typography";
 import { Button } from "@/components/ui/Button";
+import { signOutAction } from "@/lib/auth/actions";
 
 export default function AccountStatusPage() {
   const searchParams = useSearchParams();
@@ -72,7 +73,7 @@ export default function AccountStatusPage() {
         Security Note: Direct workspace URL bypass is blocked at the server boundary. You must possess an active institutional role to enter.
       </div>
 
-      <form action="/auth/signout" method="POST" className="w-full">
+      <form action={signOutAction} className="w-full">
         <Button variant="secondary" size="lg" className="w-full">
           Sign Out of This Account
         </Button>
