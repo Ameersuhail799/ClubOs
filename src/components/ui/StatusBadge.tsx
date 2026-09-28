@@ -17,23 +17,23 @@ export function StatusBadge({
   ...props
 }: StatusBadgeProps) {
   const variants = {
-    neutral: "bg-surface-container text-secondary border-outline-variant",
-    active: "bg-primary-fixed text-on-primary-fixed border-primary/20",
-    pending: "bg-surface-container-high text-on-surface border-outline-variant",
-    success: "bg-tertiary-fixed text-on-tertiary-fixed border-tertiary/20",
-    error: "bg-error-container text-on-error-container border-error/20",
+    neutral: "bg-surface-container text-on-surface-variant border-outline-variant font-medium",
+    active: "bg-primary-fixed text-on-primary-fixed border-primary/20 font-semibold",
+    pending: "bg-surface-container-high text-on-surface border-outline-variant font-medium",
+    success: "bg-tertiary-fixed text-on-tertiary-fixed border-tertiary/20 font-semibold",
+    error: "bg-error-container text-on-error-container border-error/20 font-semibold",
     group: "bg-surface-container-highest text-primary font-semibold border-outline-variant",
   };
 
   const sizes = {
-    sm: "h-5 px-1.5 text-[10px] gap-1",
-    md: "h-6 px-2 text-label-code-sm gap-1.5",
+    sm: "h-5 px-2 text-[10px] gap-1",
+    md: "h-6 px-2.5 text-label-code-sm gap-1.5",
   };
 
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center font-mono rounded-full border uppercase tracking-wider select-none font-medium leading-none",
+        "inline-flex items-center justify-center font-mono rounded-full border uppercase tracking-wider select-none leading-none whitespace-nowrap shrink-0",
         variants[variant],
         sizes[size],
         className

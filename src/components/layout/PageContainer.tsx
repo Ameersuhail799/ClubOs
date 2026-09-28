@@ -9,6 +9,7 @@ interface PageContainerProps extends React.HTMLAttributes<HTMLDivElement> {
 /**
  * PageContainer provides consistent horizontal margin, gutter, and max-width boundaries
  * supporting Desktop, Tablet, and Mobile viewports without separate codebases.
+ * Aligns by default with the 7xl grid (1280px) shared with WorkspaceHeader and PublicHeader.
  */
 export function PageContainer({
   children,
@@ -18,7 +19,7 @@ export function PageContainer({
 }: PageContainerProps) {
   const sizeClasses = {
     narrow: "max-w-4xl",
-    default: "max-w-6xl",
+    default: "max-w-7xl",
     wide: "max-w-7xl",
     full: "max-w-full",
   };

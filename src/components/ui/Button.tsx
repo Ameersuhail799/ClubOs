@@ -2,7 +2,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger" | "destructive";
   size?: "sm" | "md" | "lg";
   isLoading?: boolean;
 }
@@ -22,7 +22,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      "inline-flex items-center justify-center font-sans font-medium select-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none rounded";
+      "inline-flex items-center justify-center font-sans font-medium select-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed rounded whitespace-nowrap";
 
     const variants = {
       primary:
@@ -32,8 +32,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       outline:
         "bg-transparent text-on-surface hover:bg-surface-container-low active:bg-surface-container border border-outline-variant",
       ghost:
-        "bg-transparent text-secondary hover:text-on-surface hover:bg-surface-container-low active:bg-surface-container border border-transparent",
+        "bg-transparent text-on-surface hover:text-primary hover:bg-surface-container-low active:bg-surface-container border border-transparent",
       danger:
+        "bg-error text-on-error hover:bg-opacity-90 active:bg-opacity-100 border border-transparent shadow-subtle",
+      destructive:
         "bg-error text-on-error hover:bg-opacity-90 active:bg-opacity-100 border border-transparent shadow-subtle",
     };
 
@@ -48,7 +50,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         disabled={disabled || isLoading}
-        className={cn(baseStyles, variants[variant], sizes[size], className)}
+        className={cn(baseStyles, sizes[size], variants[variant], className)}
         {...props}
       >
         {isLoading ? (

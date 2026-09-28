@@ -21,39 +21,39 @@ export function PublicHeader() {
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-6" aria-label="Public Navigation">
+        <nav className="hidden md:flex items-center gap-4 lg:gap-6 shrink-0" aria-label="Public Navigation">
           <Link
             href="/"
-            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded whitespace-nowrap shrink-0"
           >
             Home
           </Link>
           <Link
             href="/events"
-            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded whitespace-nowrap shrink-0"
           >
             Events & Workshops
           </Link>
           <Link
             href="/#programs"
-            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded whitespace-nowrap shrink-0"
           >
             Programs
           </Link>
           <Link
             href="/#gallery"
-            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded whitespace-nowrap shrink-0"
           >
             Gallery
           </Link>
           <Link
             href="/#about"
-            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+            className="text-body-sm font-medium text-on-surface hover:text-primary transition-colors py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded whitespace-nowrap shrink-0"
           >
             About
           </Link>
-          <div className="h-4 w-[1px] bg-outline-variant" />
-          <Link href="/login">
+          <div className="h-4 w-[1px] bg-outline-variant shrink-0" />
+          <Link href="/login" className="shrink-0">
             <Button variant="primary" size="sm">
               Sign In to ClubOS
             </Button>
