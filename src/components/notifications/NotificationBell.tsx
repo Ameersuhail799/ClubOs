@@ -1,8 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { NotificationDrawer } from "./NotificationDrawer";
+import dynamic from "next/dynamic";
 import { getUnreadNotificationCountAction } from "@/lib/notifications/actions";
+
+const NotificationDrawer = dynamic(
+  () => import("./NotificationDrawer").then((mod) => mod.NotificationDrawer),
+  { ssr: false }
+);
 
 interface NotificationBellProps {
   initialUnreadCount?: number;
@@ -64,11 +69,13 @@ export function NotificationBell({ initialUnreadCount = 0 }: NotificationBellPro
         )}
       </button>
 
-      <NotificationDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        onUnreadChange={(cnt) => setUnreadCount(cnt)}
-      />
+      {drawerOpen && (
+        <NotificationDrawer
+          isOpen={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          onUnreadChange={(cnt) => setUnreadCount(cnt)}
+        />
+      )}
     </>
   );
 }

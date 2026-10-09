@@ -4,11 +4,16 @@ import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
+import dynamic from "next/dynamic";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
-import { TaskDelegationDrawer } from "./TaskDelegationDrawer";
+
+const TaskDelegationDrawer = dynamic(
+  () => import("./TaskDelegationDrawer").then((mod) => mod.TaskDelegationDrawer),
+  { ssr: false }
+);
 import { WhatsAppHandoffButton } from "@/components/whatsapp/WhatsAppHandoffButton";
 import {
   acceptTaskAction,
@@ -879,16 +884,18 @@ export function GroupWorkspaceContent({ initialData }: GroupWorkspaceContentProp
       </PageContainer>
 
       {/* Task Delegation Drawer */}
-      <TaskDelegationDrawer
-        isOpen={isDelegationOpen}
-        onClose={() => setIsDelegationOpen(false)}
-        parentTasks={parentDirectives}
-        preselectedParentTaskId={delegationParentId}
-        members={members}
-        onSubtaskDelegated={() => {
-          router.refresh();
-        }}
-      />
+      {isDelegationOpen && (
+        <TaskDelegationDrawer
+          isOpen={isDelegationOpen}
+          onClose={() => setIsDelegationOpen(false)}
+          parentTasks={parentDirectives}
+          preselectedParentTaskId={delegationParentId}
+          members={members}
+          onSubtaskDelegated={() => {
+            router.refresh();
+          }}
+        />
+      )}
 
       {/* Request Changes Modal */}
       {feedbackTask && (

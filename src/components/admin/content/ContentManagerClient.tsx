@@ -11,11 +11,25 @@ import {
   LabelCode,
 } from "@/components/ui/Typography";
 import { Button } from "@/components/ui/Button";
+import dynamic from "next/dynamic";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { EventDrawer } from "./EventDrawer";
-import { AnnouncementModal } from "./AnnouncementModal";
-import { ProgramModal } from "./ProgramModal";
-import { GalleryModal } from "./GalleryModal";
+
+const EventDrawer = dynamic(
+  () => import("./EventDrawer").then((mod) => mod.EventDrawer),
+  { ssr: false }
+);
+const AnnouncementModal = dynamic(
+  () => import("./AnnouncementModal").then((mod) => mod.AnnouncementModal),
+  { ssr: false }
+);
+const ProgramModal = dynamic(
+  () => import("./ProgramModal").then((mod) => mod.ProgramModal),
+  { ssr: false }
+);
+const GalleryModal = dynamic(
+  () => import("./GalleryModal").then((mod) => mod.GalleryModal),
+  { ssr: false }
+);
 import {
   setEventStatusAction,
   deleteEventAction,
@@ -818,73 +832,81 @@ export function ContentManagerClient({
       )}
 
       {/* Modals & Drawers with focus traps */}
-      <EventDrawer
-        isOpen={eventDrawerOpen}
-        onClose={() => setEventDrawerOpen(false)}
-        eventToEdit={selectedEventToEdit}
-        onSaved={(saved) => {
-          const idx = events.findIndex((e) => e.id === saved.id);
-          if (idx >= 0) {
-            const copy = [...events];
-            copy[idx] = saved;
-            setEvents(copy);
-          } else {
-            setEvents([saved, ...events]);
-          }
-          setActionMsg({ type: "success", text: `Event '${saved.title}' saved successfully.` });
-        }}
-      />
+      {eventDrawerOpen && (
+        <EventDrawer
+          isOpen={eventDrawerOpen}
+          onClose={() => setEventDrawerOpen(false)}
+          eventToEdit={selectedEventToEdit}
+          onSaved={(saved) => {
+            const idx = events.findIndex((e) => e.id === saved.id);
+            if (idx >= 0) {
+              const copy = [...events];
+              copy[idx] = saved;
+              setEvents(copy);
+            } else {
+              setEvents([saved, ...events]);
+            }
+            setActionMsg({ type: "success", text: `Event '${saved.title}' saved successfully.` });
+          }}
+        />
+      )}
 
-      <AnnouncementModal
-        isOpen={announcementModalOpen}
-        onClose={() => setAnnouncementModalOpen(false)}
-        announcementToEdit={selectedAnnToEdit}
-        onSaved={(saved) => {
-          const idx = announcements.findIndex((a) => a.id === saved.id);
-          if (idx >= 0) {
-            const copy = [...announcements];
-            copy[idx] = saved;
-            setAnnouncements(copy);
-          } else {
-            setAnnouncements([saved, ...announcements]);
-          }
-          setActionMsg({ type: "success", text: "Broadcast announcement posted." });
-        }}
-      />
+      {announcementModalOpen && (
+        <AnnouncementModal
+          isOpen={announcementModalOpen}
+          onClose={() => setAnnouncementModalOpen(false)}
+          announcementToEdit={selectedAnnToEdit}
+          onSaved={(saved) => {
+            const idx = announcements.findIndex((a) => a.id === saved.id);
+            if (idx >= 0) {
+              const copy = [...announcements];
+              copy[idx] = saved;
+              setAnnouncements(copy);
+            } else {
+              setAnnouncements([saved, ...announcements]);
+            }
+            setActionMsg({ type: "success", text: "Broadcast announcement posted." });
+          }}
+        />
+      )}
 
-      <ProgramModal
-        isOpen={programModalOpen}
-        onClose={() => setProgramModalOpen(false)}
-        programToEdit={selectedProgramToEdit}
-        onSaved={(saved) => {
-          const idx = contentItems.findIndex((c) => c.id === saved.id);
-          if (idx >= 0) {
-            const copy = [...contentItems];
-            copy[idx] = saved;
-            setContentItems(copy);
-          } else {
-            setContentItems([...contentItems, saved]);
-          }
-          setActionMsg({ type: "success", text: "Program division updated." });
-        }}
-      />
+      {programModalOpen && (
+        <ProgramModal
+          isOpen={programModalOpen}
+          onClose={() => setProgramModalOpen(false)}
+          programToEdit={selectedProgramToEdit}
+          onSaved={(saved) => {
+            const idx = contentItems.findIndex((c) => c.id === saved.id);
+            if (idx >= 0) {
+              const copy = [...contentItems];
+              copy[idx] = saved;
+              setContentItems(copy);
+            } else {
+              setContentItems([...contentItems, saved]);
+            }
+            setActionMsg({ type: "success", text: "Program division updated." });
+          }}
+        />
+      )}
 
-      <GalleryModal
-        isOpen={galleryModalOpen}
-        onClose={() => setGalleryModalOpen(false)}
-        photoToEdit={selectedPhotoToEdit}
-        onSaved={(saved) => {
-          const idx = contentItems.findIndex((c) => c.id === saved.id);
-          if (idx >= 0) {
-            const copy = [...contentItems];
-            copy[idx] = saved;
-            setContentItems(copy);
-          } else {
-            setContentItems([...contentItems, saved]);
-          }
-          setActionMsg({ type: "success", text: "Photo added to gallery." });
-        }}
-      />
+      {galleryModalOpen && (
+        <GalleryModal
+          isOpen={galleryModalOpen}
+          onClose={() => setGalleryModalOpen(false)}
+          photoToEdit={selectedPhotoToEdit}
+          onSaved={(saved) => {
+            const idx = contentItems.findIndex((c) => c.id === saved.id);
+            if (idx >= 0) {
+              const copy = [...contentItems];
+              copy[idx] = saved;
+              setContentItems(copy);
+            } else {
+              setContentItems([...contentItems, saved]);
+            }
+            setActionMsg({ type: "success", text: "Photo added to gallery." });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -6,10 +6,15 @@ import { useRouter } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge, type StatusVariant } from "@/components/ui/StatusBadge";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/Button";
-import { TaskCreationDrawer } from "@/components/tasks/TaskCreationDrawer";
 import { WhatsAppHandoffButton } from "@/components/whatsapp/WhatsAppHandoffButton";
 import type { TaskWithDetails, EligibleGroupHead, TaskRow, TaskStatus } from "@/lib/tasks/types";
+
+const TaskCreationDrawer = dynamic(
+  () => import("@/components/tasks/TaskCreationDrawer").then((mod) => mod.TaskCreationDrawer),
+  { ssr: false }
+);
 
 interface GroupData {
   id: string;
@@ -263,13 +268,15 @@ export function CommandCenterContent({
       </PageContainer>
 
       {/* Task Creation Drawer */}
-      <TaskCreationDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        groups={initialGroups}
-        groupHeads={initialGroupHeads}
-        onTaskCreated={handleTaskCreated}
-      />
+      {isDrawerOpen && (
+        <TaskCreationDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          groups={initialGroups}
+          groupHeads={initialGroupHeads}
+          onTaskCreated={handleTaskCreated}
+        />
+      )}
     </div>
   );
 }
