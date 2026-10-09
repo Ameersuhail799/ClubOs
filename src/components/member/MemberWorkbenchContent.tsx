@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -30,6 +31,7 @@ export function MemberWorkbenchContent({
     "all" | "needs_action" | "in_progress" | "ready_for_review" | "completed"
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 200);
 
   const { member, capacity, tasks, todos, recentActivity } = data;
 
@@ -50,8 +52,8 @@ export function MemberWorkbenchContent({
 
   // Filter for My Tasks view
   const filteredMyTasks = tasks.all.filter((t) => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       const matchTitle = t.title.toLowerCase().includes(q);
       const matchCode = t.task_code.toLowerCase().includes(q);
       const matchDesc = t.description?.toLowerCase().includes(q);

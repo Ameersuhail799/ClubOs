@@ -2505,7 +2505,8 @@ export async function getOrganizationDirectives(): Promise<TaskResult<TaskWithDe
     `)
     .eq("organization_id", organizationId)
     .is("parent_task_id", null)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (error || !tasks) {
     return { error: `Failed to load directives: ${error?.message}`, code: "internal_error" };
@@ -2627,7 +2628,8 @@ export async function getGroupWorkspaceData(
     `)
     .eq("organization_id", organizationId)
     .eq("primary_group_id", groupId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (tasksErr || !rawTasks) {
     return { error: `Failed to load group tasks: ${tasksErr?.message}`, code: "internal_error" };
@@ -2795,7 +2797,8 @@ export async function getMemberWorkbenchData(): Promise<TaskResult<MemberWorkben
     `)
     .eq("organization_id", organizationId)
     .eq("assignee_id", userId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (tasksErr) {
     return { error: `Failed to load member tasks: ${tasksErr.message}`, code: "internal_error" };
@@ -2897,7 +2900,8 @@ export async function getMemberWorkbenchData(): Promise<TaskResult<MemberWorkben
     .eq("user_id", userId)
     .order("is_completed", { ascending: true })
     .order("position", { ascending: true })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   const taskByIdMap = new Map(enrichedTasks.map((t) => [t.id, t]));
   const personalTodos: PersonalTodoWithTask[] = (rawTodos || []).map((todo) => {
@@ -3262,8 +3266,8 @@ export async function getWorkboardData(
     query = query.eq("status", filters.status);
   }
 
-  // Order chronologically by newest
-  query = query.order("created_at", { ascending: false });
+  // Order chronologically by newest with bounded limit
+  query = query.order("created_at", { ascending: false }).limit(250);
 
   const { data: rawTasks, error: taskErr } = await query;
   if (taskErr || !rawTasks) {

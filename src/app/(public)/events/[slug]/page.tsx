@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getPublicEventBySlug } from "@/lib/content/service";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 interface EventDetailPageProps {
   params: Promise<{ slug: string }>;

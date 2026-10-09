@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useMemo } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { type DirectoryMember, type OrganizationGroup } from "@/lib/members/service";
 import {
   createMemberInvitationAction,
@@ -44,6 +45,7 @@ export function MembersDirectoryClient({
 }: MembersDirectoryClientProps) {
   const [members, setMembers] = useState<DirectoryMember[]>(initialMembers);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 200);
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -64,8 +66,8 @@ export function MembersDirectoryClient({
   const filteredMembers = useMemo(() => {
     return members.filter((member) => {
       // Search query filter
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
+      if (debouncedSearch.trim()) {
+        const query = debouncedSearch.toLowerCase();
         const matchesName = member.fullName.toLowerCase().includes(query);
         const matchesEmail = member.email.toLowerCase().includes(query);
         const matchesPhone = member.phone?.toLowerCase().includes(query);
@@ -89,7 +91,7 @@ export function MembersDirectoryClient({
 
       return true;
     });
-  }, [members, searchQuery, roleFilter, groupFilter, statusFilter]);
+  }, [members, debouncedSearch, roleFilter, groupFilter, statusFilter]);
 
   // Handle invitation creation
   const handleAddSubmit = (e: React.FormEvent) => {

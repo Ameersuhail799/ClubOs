@@ -500,7 +500,8 @@ export async function listTaskAttachments(
     .select("*")
     .eq("task_id", taskId)
     .eq("organization_id", organizationId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (filesError) {
     return { error: filesError.message, code: "internal_error" };

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useDebounce } from "@/hooks/useDebounce";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -41,6 +42,7 @@ export function WorkboardContent({
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 200);
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
   const [selectedScope, setSelectedScope] = useState<"all" | "my_work">("all");
@@ -55,48 +57,87 @@ export function WorkboardContent({
   const isMainHead = userRole === "main_head";
   const isGroupHead = userRole === "group_head";
 
-  // Filter tasks based on client filters
-  const filteredTasks = boardData.tasks.filter((task) => {
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = task.title.toLowerCase().includes(q);
-      const matchCode = task.taskCode.toLowerCase().includes(q);
-      const matchDesc = task.description?.toLowerCase().includes(q);
-      if (!matchTitle && !matchCode && !matchDesc) return false;
+  // Filter tasks and partition into workflow columns in a single memoized pass
+  const {
+    filteredTasks,
+    assignedTasks,
+    inProgressTasks,
+    reviewTasks,
+    completedTasks,
+    archivedTasks,
+  } = useMemo(() => {
+    const assigned: WorkboardTask[] = [];
+    const inProgress: WorkboardTask[] = [];
+    const review: WorkboardTask[] = [];
+    const completed: WorkboardTask[] = [];
+    const archived: WorkboardTask[] = [];
+    const filtered: WorkboardTask[] = [];
+
+    const q = debouncedSearch.trim().toLowerCase();
+    const uid = boardData.currentUser.id;
+
+    for (const task of boardData.tasks) {
+      // Search filter
+      if (q) {
+        const matchTitle = task.title.toLowerCase().includes(q);
+        const matchCode = task.taskCode.toLowerCase().includes(q);
+        const matchDesc = task.description?.toLowerCase().includes(q);
+        if (!matchTitle && !matchCode && !matchDesc) continue;
+      }
+
+      // Group filter (for Main Head or multi-group)
+      if (selectedGroup !== "all" && task.primaryGroupId !== selectedGroup) {
+        continue;
+      }
+
+      // Priority filter
+      if (selectedPriority !== "all" && task.priority !== selectedPriority) {
+        continue;
+      }
+
+      // Scope filter (My Work)
+      if (selectedScope === "my_work") {
+        const isMine =
+          task.assigneeId === uid || task.assignedHeadId === uid;
+        if (!isMine) continue;
+      }
+
+      filtered.push(task);
+
+      // Single-pass column segregation
+      if (task.status === "assigned") {
+        assigned.push(task);
+      } else if (
+        task.status === "in_progress" ||
+        task.status === "accepted" ||
+        task.status === "blocked"
+      ) {
+        inProgress.push(task);
+      } else if (task.status === "ready_for_review") {
+        review.push(task);
+      } else if (task.status === "completed") {
+        completed.push(task);
+      } else if (task.status === "draft" || task.status === "cancelled") {
+        archived.push(task);
+      }
     }
 
-    // Group filter (for Main Head or multi-group)
-    if (selectedGroup !== "all" && task.primaryGroupId !== selectedGroup) {
-      return false;
-    }
-
-    // Priority filter
-    if (selectedPriority !== "all" && task.priority !== selectedPriority) {
-      return false;
-    }
-
-    // Scope filter (My Work)
-    if (selectedScope === "my_work") {
-      const uid = boardData.currentUser.id;
-      const isMine =
-        task.assigneeId === uid || task.assignedHeadId === uid;
-      if (!isMine) return false;
-    }
-
-    return true;
-  });
-
-  // Segregate tasks into workflow columns
-  const assignedTasks = filteredTasks.filter((t) => t.status === "assigned");
-  const inProgressTasks = filteredTasks.filter(
-    (t) => t.status === "in_progress" || t.status === "accepted" || t.status === "blocked"
-  );
-  const reviewTasks = filteredTasks.filter((t) => t.status === "ready_for_review");
-  const completedTasks = filteredTasks.filter((t) => t.status === "completed");
-  const archivedTasks = filteredTasks.filter(
-    (t) => t.status === "draft" || t.status === "cancelled"
-  );
+    return {
+      filteredTasks: filtered,
+      assignedTasks: assigned,
+      inProgressTasks: inProgress,
+      reviewTasks: review,
+      completedTasks: completed,
+      archivedTasks: archived,
+    };
+  }, [
+    boardData.tasks,
+    boardData.currentUser.id,
+    debouncedSearch,
+    selectedGroup,
+    selectedPriority,
+    selectedScope,
+  ]);
 
   // Refresh board data from server with current server-side filters
   const reloadBoard = async () => {

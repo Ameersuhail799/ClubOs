@@ -66,7 +66,8 @@ export async function getOrganizationMembers(
     .from("organization_members")
     .select("*, primary_group:groups(id, name, slug)")
     .eq("organization_id", organizationId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(250);
 
   if (membersError || !members) {
     throw new Error(`Failed to load member ledger: ${membersError?.message}`);

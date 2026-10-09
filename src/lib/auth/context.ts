@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 import type { User } from "@supabase/supabase-js";
@@ -18,19 +19,21 @@ export interface OrganizationContext {
 
 /**
  * Retrieves the currently authenticated Supabase Auth user.
+ * Memoized per-request using React.cache.
  */
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<User | null> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
-}
+});
 
 /**
  * Retrieves the current user's organization membership record with relational joins.
+ * Memoized per-request using React.cache.
  */
-export async function getCurrentMembership() {
+export const getCurrentMembership = cache(async function getCurrentMembership() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -47,15 +50,16 @@ export async function getCurrentMembership() {
     .maybeSingle();
 
   return membership;
-}
+});
 
 /**
  * Resolves the complete authoritative ClubOS context:
  * auth.users -> profiles -> organization_members -> organizations -> primary_group -> role.
  *
  * Verifies active membership and identifies pending or deactivated states.
+ * Memoized per-request using React.cache.
  */
-export async function getCurrentOrganizationContext(): Promise<OrganizationContext> {
+export const getCurrentOrganizationContext = cache(async function getCurrentOrganizationContext(): Promise<OrganizationContext> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -154,7 +158,7 @@ export async function getCurrentOrganizationContext(): Promise<OrganizationConte
     status: membership.status,
     error: null,
   };
-}
+});
 
 /**
  * Returns the default workspace entry path for an authoritative role.

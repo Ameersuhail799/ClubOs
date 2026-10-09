@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { getPublicEvents } from "@/lib/content/service";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 interface EventsPageProps {
   searchParams: Promise<{

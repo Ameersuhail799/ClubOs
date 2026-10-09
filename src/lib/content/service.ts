@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createClient } from "@/lib/supabase/server";
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentOrganizationContext } from "@/lib/auth/context";
 import type {
@@ -37,7 +37,7 @@ export function slugify(text: string): string {
  * Resolves the primary organization for public visitors (defaults to first active org if no slug specified).
  */
 export async function getPublicOrganization(orgSlug?: string) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   let query = supabase.from("organizations").select("id, name, slug");
   if (orgSlug) {
     query = query.eq("slug", orgSlug);
@@ -64,7 +64,7 @@ export async function getPublicHomeData(orgSlug?: string) {
     };
   }
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // 1. Fetch Hero Content
   const { data: heroRows } = await supabase
@@ -103,7 +103,8 @@ export async function getPublicHomeData(orgSlug?: string) {
     .eq("organization_id", org.id)
     .eq("content_type", "program")
     .eq("status", "published")
-    .order("sort_order", { ascending: true });
+    .order("sort_order", { ascending: true })
+    .limit(20);
 
   // 5. Fetch Published Gallery items
   const { data: gallery } = await supabase
@@ -146,7 +147,7 @@ export async function getPublicEvents(options?: {
   const org = await getPublicOrganization(options?.orgSlug);
   if (!org) return { organization: null, events: [] };
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const now = new Date().toISOString();
 
   let query = supabase
@@ -168,6 +169,8 @@ export async function getPublicEvents(options?: {
     query = query.ilike("title", `%${options.search.trim()}%`);
   }
 
+  query = query.limit(50);
+
   const { data: events, error } = await query;
   if (error) {
     console.error("Error fetching public events:", error.message);
@@ -185,7 +188,7 @@ export async function getPublicEventBySlug(slug: string, orgSlug?: string) {
   const org = await getPublicOrganization(orgSlug);
   if (!org) return null;
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: event, error } = await supabase
     .from("events")
     .select("id, title, slug, abstract, content, location, starts_at, ends_at, banner_url, status, agenda, prerequisites")
@@ -237,7 +240,8 @@ export async function getMainHeadEvents(): Promise<EventRow[]> {
     .from("events")
     .select("*")
     .eq("organization_id", context.organization!.id)
-    .order("starts_at", { ascending: false });
+    .order("starts_at", { ascending: false })
+    .limit(100);
 
   if (error) throw new Error(error.message);
   return data || [];
@@ -445,7 +449,8 @@ export async function getMainHeadAnnouncements(): Promise<AnnouncementRow[]> {
     .from("announcements")
     .select("*")
     .eq("organization_id", context.organization!.id)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (error) throw new Error(error.message);
   return data || [];

@@ -11,6 +11,26 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  const pathname = request.nextUrl.pathname;
+  const isWorkspaceRoute = pathname.startsWith("/workspace");
+  const isAuthRoute = pathname === "/login" || pathname === "/recover";
+
+  const allCookies = request.cookies.getAll();
+  const hasAuthCookies = allCookies.some((c) => c.name.startsWith("sb-"));
+
+  // Fast-path bypass for public routes when no auth session needs refreshing
+  if (!isWorkspaceRoute && (!isAuthRoute || !hasAuthCookies)) {
+    return supabaseResponse;
+  }
+
+  // Fast-path for unauthenticated workspace access
+  if (isWorkspaceRoute && !hasAuthCookies) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("redirectTo", pathname);
+    return NextResponse.redirect(url);
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -23,7 +43,7 @@ export async function updateSession(request: NextRequest) {
   const supabase = createServerClient<Database>(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
-        return request.cookies.getAll();
+        return allCookies;
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) =>
@@ -43,8 +63,6 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const pathname = request.nextUrl.pathname;
 
   // 1. Protect workspace routes from unauthenticated access
   if (pathname.startsWith("/workspace")) {

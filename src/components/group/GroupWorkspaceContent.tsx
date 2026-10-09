@@ -3,6 +3,7 @@
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { HeadlineMd, BodyMd, LabelCaps, LabelCode } from "@/components/ui/Typography";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -44,6 +45,7 @@ export function GroupWorkspaceContent({ initialData }: GroupWorkspaceContentProp
   // Filters & Tabs
   const [activeTab, setActiveTab] = useState<InboxTab>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 200);
   const [typeFilter, setTypeFilter] = useState<"all" | "directives" | "subtasks">("all");
 
   // Delegation Drawer
@@ -122,8 +124,8 @@ export function GroupWorkspaceContent({ initialData }: GroupWorkspaceContentProp
   // Filter tasks based on search, tab, and type
   const filteredTasks = tasks.filter((task) => {
     // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       const matchTitle = task.title.toLowerCase().includes(q);
       const matchCode = task.task_code.toLowerCase().includes(q);
       const matchDesc = task.description?.toLowerCase().includes(q);
@@ -157,7 +159,7 @@ export function GroupWorkspaceContent({ initialData }: GroupWorkspaceContentProp
   const standaloneSubtasks = filteredTasks.filter((t) => {
     if (t.parent_task_id === null) return false;
     // If its parent is already shown in filteredDirectives, we don't duplicate it as standalone
-    if (activeTab === "all" && typeFilter === "all" && !searchQuery.trim()) {
+    if (activeTab === "all" && typeFilter === "all" && !debouncedSearch.trim()) {
       return false; // Handled under parent tree
     }
     return true;
